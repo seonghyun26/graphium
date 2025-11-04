@@ -168,6 +168,7 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
             )
             wandb.init(mode="disabled")
         elif wandb_cfg is not None:
+            wandb_cfg.pop("save_dir", None)
             wandb.init(config=cfg, **wandb_cfg)
     else:
         wandb_cfg = None

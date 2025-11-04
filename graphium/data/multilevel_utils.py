@@ -17,7 +17,7 @@ import numpy as np
 from typing import List
 import itertools
 import math
-
+import swifter
 
 def extract_labels(df: pd.DataFrame, task_level: str, label_cols: List[str]):
     """Extracts labels in label_cols from dataframe df for a given task_level.
@@ -56,8 +56,10 @@ def extract_labels(df: pd.DataFrame, task_level: str, label_cols: List[str]):
         data = np.stack(list(padded_data), 1).T
         return data
 
-    unpacked_df: pd.DataFrame = df[label_cols].apply(unpack_column)
-    output = unpacked_df.apply(merge_columns, axis="columns").to_list()
+    # unpacked_df: pd.DataFrame = df[label_cols].apply(unpack_column)
+    # output = unpacked_df.apply(merge_columns, axis="columns").to_list()
+    unpacked_df: pd.DataFrame = df[label_cols].swifter.progress_bar(desc="Unpacking labels").apply(unpack_column)
+    output = unpacked_df.swifter.progress_bar(desc="Merging labels").apply(merge_columns, axis="columns").to_list()
 
     if task_level == "graph":
         return np.concatenate(output)

@@ -1,0 +1,37 @@
+cd ../../
+
+CUDA_VISIBLE_DEVICES=$1 graphium-train \
+    accelerator=gpu \
+    architecture=largemix \
+    model=gpspp \
+    tasks=largemix \
+    training=largemix \
+    ++constants.norm=layer_norm \
+    ++constants.entity=eddy26 \
+    ++datamodule.args.task_specific_args.qm9.df_path=./data/graphium/neurips2023/small-dataset/qm9.csv \
+    ++datamodule.args.task_specific_args.qm9.splits_path=./data/graphium/neurips2023/small-dataset/qm9_random_splits.pt \
+    ++datamodule.args.task_specific_args.tox21.df_path=./data/graphium/neurips2023/small-dataset/Tox21-7k-12-labels.csv \
+    ++datamodule.args.task_specific_args.tox21.splits_path=./data/graphium/neurips2023/small-dataset/Tox21_random_splits.pt \
+    ++datamodule.args.task_specific_args.zinc.df_path=./data/graphium/neurips2023/small-dataset/ZINC12k.csv \
+    ++datamodule.args.task_specific_args.zinc.splits_path=./data/graphium/neurips2023/small-dataset/ZINC12k_random_splits.pt \
+    ++datamodule.args.task_specific_args.pcqm4m_g25_n4.df_path=./data/graphium/neurips2023/large-dataset/PCQM4M_G25_N4.parquet \
+    ++datamodule.args.task_specific_args.pcqm4m_g25_n4.splits_path=./data/graphium/neurips2023/large-dataset/pcqm4m_g25_n4_random_splits.pt \
+    ++datamodule.args.task_specific_args.pcqm4m_g25_n4.smiles_col='ordered_smiles' \
+    ++datamodule.args.task_specific_args.pcqm4m_g25_n4.label_cols='graph_*' \
+    ++datamodule.args.task_specific_args.pcqm4m_g25_n4.task_level=graph \
+    ++datamodule.args.task_specific_args.pcba_1328.df_path=./data/graphium/neurips2023/large-dataset/PCBA_1328_1564k.parquet \
+    ++datamodule.args.task_specific_args.pcba_1328.splits_path=./data/graphium/neurips2023/large-dataset/pcba_1328_random_splits.pt \
+    ++datamodule.args.task_specific_args.pcba_1328.smiles_col='SMILES' \
+    ++datamodule.args.task_specific_args.pcba_1328.label_cols='assayID-*' \
+    ++datamodule.args.task_specific_args.pcba_1328.task_level=graph \
+    ++datamodule.args.task_specific_args.l1000_vcap.df_path=./data/graphium/neurips2023/large-dataset/LINCS_L1000_VCAP_0-2_th2.csv.gz \
+    ++datamodule.args.task_specific_args.l1000_vcap.splits_path=./data/graphium/neurips2023/large-dataset/l1000_vcap_random_splits.pt \
+    ++datamodule.args.task_specific_args.l1000_vcap.smiles_col='SMILES' \
+    ++datamodule.args.task_specific_args.l1000_vcap.label_cols='geneID-*' \
+    ++datamodule.args.task_specific_args.l1000_vcap.task_level=graph \
+    ++datamodule.args.task_specific_args.l1000_mcf7.df_path=./data/graphium/neurips2023/large-dataset/LINCS_L1000_MCF7_0-2_th2.csv.gz \
+    ++datamodule.args.task_specific_args.l1000_mcf7.splits_path=./data/graphium/neurips2023/large-dataset/l1000_mcf7_random_splits.pt \
+    ++datamodule.args.task_specific_args.l1000_mcf7.smiles_col='SMILES' \
+    ++datamodule.args.task_specific_args.l1000_mcf7.label_cols='geneID-*' \
+    ++datamodule.args.task_specific_args.l1000_mcf7.task_level=graph \
+    ++datamodule.args.processed_graph_data_path=./data/graphium/largemix 

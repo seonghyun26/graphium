@@ -814,7 +814,6 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
             task_specific_args: A dictionary where the key is the task name (for the multi-task setting), and
                 the value is a `DatasetProcessingParams` object. The `DatasetProcessingParams` object
                 contains multiple parameters to define how to load and process the files, such as:
-
                 - `task_level`
                 - `df`
                 - `df_path`
@@ -988,6 +987,8 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
             return
 
         """Load all single-task dataframes."""
+        # order = ["graph_zinc", "graph_l1000_vcap", "None_l1000_mcf7", "None_pcqm4m_g25_n4", "None_pcba_1328", "graph_tox21", "graph_qm9"]
+        # self.task_dataset_processing_params_reordered = {task: self.task_dataset_processing_params[task] for task in order}
         task_df = {}
         for task, args in self.task_dataset_processing_params.items():
             if args.label_normalization is None:
@@ -1023,7 +1024,8 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
         for task in task_df.keys():
             task_dataset_args[task] = {}
 
-        for task, df in task_df.items():
+        logger.info(f"Subsampling the data frames")
+        for task, df in tqdm(task_df.items()):
             # Subsample all the dataframes
             sample_size = self.task_dataset_processing_params[task].sample_size
             df = self._sub_sample_df(df, sample_size, self.task_dataset_processing_params[task].seed)
@@ -1056,7 +1058,8 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
         all_tasks = []
         idx_per_task = {}
         total_len = 0
-        for task, dataset_args in task_dataset_args.items():
+        logger.info(f"Converting SMILES to features")
+        for task, dataset_args in tqdm(task_dataset_args.items()):
             all_smiles.extend(dataset_args["smiles"])
             num_smiles = len(dataset_args["smiles"])
             idx_per_task[task] = (total_len, total_len + num_smiles)
@@ -2369,7 +2372,7 @@ class ADMETBenchmarkDataModule(MultitaskFromSmilesDataModule):
     Wrapper to use the ADMET benchmark group from the TDC (Therapeutics Data Commons).
 
     !!! warning "Dependency"
-
+`
         This class requires [PyTDC](https://pypi.org/project/PyTDC/) to be installed.
 
     !!! note "Citation"
