@@ -26,7 +26,7 @@ predictor:
     herg: ["auroc"]
     ames: ["auroc"]
     dili: ["auroc"]
-    ld50_zhu: ["auroc"]
+    ld50_zhu: ["mae"]
   loss_fun:
     caco2_wang: mae
     hia_hou: bce
