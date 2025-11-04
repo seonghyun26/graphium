@@ -22,12 +22,12 @@ echo "==> Downloading zips from Zenodo…"
 
 declare -A URLS=(
   # small (ToyMix)
-#   [${SMALL}/qm9.zip]="https://zenodo.org/records/10797794/files/qm9.zip?download=1"
-#   [${SMALL}/Tox21.zip]="https://zenodo.org/records/10797794/files/Tox21.zip?download=1"
-#   [${SMALL}/ZINC12k.zip]="https://zenodo.org/records/10797794/files/ZINC12k.zip?download=1"
+  [${SMALL}/qm9.zip]="https://zenodo.org/records/10797794/files/qm9.zip?download=1"
+  [${SMALL}/Tox21.zip]="https://zenodo.org/records/10797794/files/Tox21.zip?download=1"
+  [${SMALL}/ZINC12k.zip]="https://zenodo.org/records/10797794/files/ZINC12k.zip?download=1"
   # large (LargeMix)
-#   [${LARGE}/pcqm4m_g25_n4.zip]="https://zenodo.org/records/10797794/files/pcqm4m_g25_n4.zip?download=1"
-#   [${LARGE}/pcba_1328.zip]="https://zenodo.org/records/10797794/files/pcba_1328.zip?download=1"
+  [${LARGE}/pcqm4m_g25_n4.zip]="https://zenodo.org/records/10797794/files/pcqm4m_g25_n4.zip?download=1"
+  [${LARGE}/pcba_1328.zip]="https://zenodo.org/records/10797794/files/pcba_1328.zip?download=1"
   [${LARGE}/l1000_vcap.zip]="https://zenodo.org/records/10797794/files/l1000_vcap.zip?download=1"
   [${LARGE}/l1000_mcf7.zip]="https://zenodo.org/records/10797794/files/l1000_mcf7.zip?download=1"
 )
@@ -35,12 +35,12 @@ declare -A URLS=(
 
 declare -A MD5S=(
   # small (ToyMix)
-#   [${SMALL}/qm9.zip]="03be6960c1d97e4cc08dfe4b6623825d"
-#   [${SMALL}/Tox21.zip]="f4baa8570a0913bb9efc763b1eb66c60"
-#   [${SMALL}/ZINC12k.zip]="73fc6e5c67d4e6e25b59ec0d7433d769"
+  [${SMALL}/qm9.zip]="03be6960c1d97e4cc08dfe4b6623825d"
+  [${SMALL}/Tox21.zip]="f4baa8570a0913bb9efc763b1eb66c60"
+  [${SMALL}/ZINC12k.zip]="73fc6e5c67d4e6e25b59ec0d7433d769"
   # large (LargeMix)
-#   [${LARGE}/pcqm4m_g25_n4.zip]="5a60b50ff3ad4594f978ecb8ee482070"
-#   [${LARGE}/pcba_1328.zip]="7ae4c2f871fe86b07f4ec161023caa62"
+  [${LARGE}/pcqm4m_g25_n4.zip]="5a60b50ff3ad4594f978ecb8ee482070"
+  [${LARGE}/pcba_1328.zip]="7ae4c2f871fe86b07f4ec161023caa62"
   [${LARGE}/l1000_vcap.zip]="c43d36c69888df8c182919537d68c6a3"
   [${LARGE}/l1000_mcf7.zip]="22d1b7276a834fd60fbf00742eed82f5"
 )
@@ -53,7 +53,7 @@ for OUT in "${!URLS[@]}"; do
   echo "${MD5S[$OUT]}  $(basename "$OUT")" | (cd "$(dirname "$OUT")" && md5sum -c -)
 done
 
-echo "==> Unzipping…"
+# echo "==> Unzipping…"
 # Unzip ToyMix (small)
 # for Z in "$SMALL"/*.zip; do
 #   echo "  -> ${Z##*/}"
