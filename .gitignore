@@ -40,14 +40,13 @@ graphium/data/PCQM4Mv2/
 graphium/data/PCQM4M/
 graphium/data/largemix/
 graphium/data/toymix/
-graphium/data/neurips2023/small-dataset/
-graphium/data/neurips2023/large-dataset/
 graphium/data/neurips2023/dummy-dataset/
 graphium/data/make_data_splits/*.csv*
 graphium/data/make_data_splits/*.pt*
 graphium/data/make_data_splits/*.parquet*
 *.csv.gz
 *.pt
+data/graphium/
 
 # Others
 expts_untracked/
