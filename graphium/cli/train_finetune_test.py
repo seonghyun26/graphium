@@ -32,6 +32,7 @@ from graphium.finetuning import (
     GraphFinetuning,
     modify_cfg_for_finetuning,
 )
+from graphium.finetuning.utils import filter_cfg_based_on_admet_benchmark_name
 from graphium.hyper_param_search import (
     HYPER_PARAM_SEARCH_CONFIG_KEY,
     extract_main_metric_for_hparam_search,
@@ -129,6 +130,8 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
 
     unresolved_cfg = OmegaConf.to_container(cfg, resolve=False)
     cfg = OmegaConf.to_container(cfg, resolve=True)
+    print(OmegaConf.to_yaml(cfg, resolve=True))
+
 
     # Get the current date and time
     now = datetime.now()
@@ -154,6 +157,15 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
     # Modify the config for finetuning
     if FINETUNING_CONFIG_KEY in cfg:
         cfg = modify_cfg_for_finetuning(cfg)
+    # Filter config for ADMET single-task training (without finetuning)
+    elif (
+        cfg.get("datamodule", {}).get("module_type") == "ADMETBenchmarkDataModule"
+        and cfg.get("datamodule", {}).get("args", {}).get("tdc_benchmark_names") is not None
+    ):
+        cfg['metrics'] = {k: v for k, v in cfg["metrics"].items() if k == cfg['constants']['task']}
+        cfg['architecture']['task_heads'] = {k: v for k, v in cfg["architecture"]["task_heads"].items() if k == cfg['constants']['task']}
+        cfg['predictor']['loss_fun'] = {k: v for k, v in cfg["predictor"]["loss_fun"].items() if k == cfg['constants']['task']}
+        cfg['predictor']['metrics_on_progress_bar'] = {k: v for k, v in cfg['predictor']['metrics_on_progress_bar'].items() if k == cfg['constants']['task']}
 
     st = timeit.default_timer()
 

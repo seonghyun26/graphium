@@ -74,7 +74,6 @@ LOSS_DICT = {
     "bce": torch.nn.BCELoss,
     "bce_logits": torch.nn.BCEWithLogitsLoss,
     "mse": torch.nn.MSELoss,
-    "bce": torch.nn.BCELoss,
     "l1": torch.nn.L1Loss,
     "mae": torch.nn.L1Loss,
     "hybrid_ce": Losses.HybridCELoss,

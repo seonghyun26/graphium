@@ -1,0 +1,14 @@
+# @package _global_
+
+# MPNN model with the PCQMv2 dataset.
+constants:
+  name: neurips2023_small_data_mpnn_4layer
+  seed: 42
+  max_epochs: 100
+  data_dir: expts/data/neurips2023/small-dataset
+  raise_train_error: true   # Whether the code should raise an error if it crashes during training
+  datacache_path: ../datacache/neurips2023-small/
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/small-dataset/mpnn/${now:%Y-%m-%d_%H-%M-%S}/

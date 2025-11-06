@@ -1546,13 +1546,16 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
         )
 
         # Loop all the smiles and compute the features
+        print(f"self.featurization_n_jobs={self.featurization_n_jobs}")
         features = dm.parallelized_with_batches(
             BatchingSmilesTransform(self.smiles_transformer),
             smiles,
             batch_size=batch_size,
             progress=True,
-            n_jobs=self.featurization_n_jobs,
-            backend=self.featurization_backend,
+            # n_jobs=self.featurization_n_jobs,
+            n_jobs=2,
+            backend="loky",
+            # backend=self.featurization_backend,
             tqdm_kwargs={"desc": f"featurizing_smiles, batch={batch_size}"},
         )
 

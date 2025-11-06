@@ -123,8 +123,10 @@ def smiles_to_unique_mol_ids(
         smiles,
         batch_size=batch_size,
         progress=progress,
-        n_jobs=n_jobs,
-        backend=backend,
+        # n_jobs=n_jobs,
+        # backend=backend,
+        n_jobs=1,
+        backend="threading",
         tqdm_kwargs={"desc": f"{progress_desc}, batch={batch_size}"},
     )
 
