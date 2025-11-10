@@ -30,7 +30,6 @@ for task in "${TASK_LIST[@]}"; do
             ++constants.wandb.save_dir=null \
             ++constants.wandb.project=graphium \
             ++constants.wandb.tags="['mpnn', 'scratch']" \
-            ++trainer.trainer.precision=32 \
             ++architecture.pre_nn.hidden_dims=${hidden_dim} \
             ++architecture.pre_nn.out_dim=${hidden_dim} \
             ++architecture.pre_nn_edges.out_dim=${hidden_dim} \

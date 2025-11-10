@@ -21,7 +21,6 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++constants.wandb.save_dir=null \
             ++constants.wandb.project=graphium \
             ++constants.wandb.tags="['gcn', 'scratch']" \
-            ++trainer.trainer.precision=32 \
             ++architecture.pre_nn.out_dim=${hidden_dim} \
             ++architecture.gnn.mpnn_kwargs.in_dim=${hidden_dim} \
             ++architecture.gnn.mpnn_kwargs.out_dim=${hidden_dim} \

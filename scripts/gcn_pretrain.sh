@@ -31,7 +31,6 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++architecture.task_heads.qm9.hidden_dims=${hidden_dim} \
             ++architecture.task_heads.tox21.hidden_dims=${hidden_dim} \
             ++architecture.task_heads.zinc.hidden_dims=${hidden_dim} \
-            ++trainer.trainer.precision=32 \
             ++datamodule.args.task_specific_args.qm9.df_path=./data/graphium/neurips2023/small-dataset/qm9.csv \
             ++datamodule.args.task_specific_args.qm9.splits_path=./data/graphium/neurips2023/small-dataset/qm9_random_splits.pt \
             ++datamodule.args.task_specific_args.tox21.df_path=./data/graphium/neurips2023/small-dataset/Tox21-7k-12-labels.csv \
@@ -52,7 +51,6 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++constants.wandb.save_dir=null \
             ++constants.wandb.project=graphium \
             ++constants.wandb.tags="['gcn', 'pretrain']" \
-            ++trainer.trainer.precision=32 \
             ++architecture.pre_nn.out_dim=${hidden_dim} \
             ++architecture.gnn.depth=16 \
             ++architecture.gnn.in_dim=${hidden_dim} \
