@@ -9,10 +9,12 @@ TASK_LIST=('caco2_wang')
 #     'half_life_obach' 'clearance_hepatocyte_az' 'clearance_microsome_az' 
 #     'ld50_zhu' 'herg' 'ames' 'dili' 
 # )
-HIDDEN_DIM_LIST=(696)
+HIDDEN_DIM=512
 
+
+# ADMET scratch
 for task in "${TASK_LIST[@]}"; do
-    echo "Task: $task"
+    echo "Training $task"
     sleep 1
 
     CUDA_VISIBLE_DEVICES=$DEVICE graphium-train \
@@ -25,13 +27,45 @@ for task in "${TASK_LIST[@]}"; do
         ++constants.wandb.entity=eddy26 \
         ++constants.wandb.save_dir=null \
         ++constants.wandb.project=graphium \
-        ++constants.wandb.tags="['gcn', 'scratch']" \
-        ++architecture.pre_nn.out_dim=${hidden_dim} \
+        ++constants.wandb.tags="['gcn', 'debug', 'scratch']" \
+        ++trainer.trainer.max_epochs=10 \
+        ++architecture.pre_nn.out_dim=$HIDDEN_DIM \
         ++architecture.gnn.depth=16 \
-        ++architecture.gnn.in_dim=${hidden_dim} \
-        ++architecture.gnn.out_dim=${hidden_dim} \
-        ++architecture.gnn.hidden_dims=${hidden_dim} \
-        ++architecture.graph_output_nn.graph.hidden_dims=${hidden_dim} \
-        ++architecture.graph_output_nn.graph.out_dim=${hidden_dim} \
-        ++architecture.task_heads.${task}.hidden_dims=${hidden_dim} 
+        ++architecture.gnn.in_dim=$HIDDEN_DIM \
+        ++architecture.gnn.out_dim=$HIDDEN_DIM \
+        ++architecture.gnn.hidden_dims=$HIDDEN_DIM \
+        ++architecture.graph_output_nn.graph.hidden_dims=$HIDDEN_DIM \
+        ++architecture.graph_output_nn.graph.out_dim=$HIDDEN_DIM \
+        ++architecture.task_heads.${task}.hidden_dims=$HIDDEN_DIM 
 done
+
+# Pretraining
+echo "Pretraining on toy dataset"
+CUDA_VISIBLE_DEVICES=$DEVICE graphium-train \
+    model=gcn \
+    accelerator=gpu \
+    tasks=toymix \
+    training=toymix \
+    architecture=toymix \
+    ++constants.seed=0 \
+    ++constants.wandb.entity=eddy26 \
+    ++constants.wandb.save_dir=null \
+    ++constants.wandb.project=graphium \
+    ++constants.wandb.tags="['gcn', 'debug', 'pretrain']" \
+    ++trainer.trainer.max_epochs=10 \
+    ++architecture.pre_nn.out_dim=$HIDDEN_DIM \
+    ++architecture.gnn.depth=16 \
+    ++architecture.gnn.in_dim=$HIDDEN_DIM \
+    ++architecture.gnn.out_dim=$HIDDEN_DIM \
+    ++architecture.gnn.hidden_dims=$HIDDEN_DIM \
+    ++architecture.graph_output_nn.graph.hidden_dims=$HIDDEN_DIM \
+    ++architecture.graph_output_nn.graph.out_dim=$HIDDEN_DIM \
+    ++architecture.task_heads.qm9.hidden_dims=$HIDDEN_DIM \
+    ++architecture.task_heads.tox21.hidden_dims=$HIDDEN_DIM \
+    ++architecture.task_heads.zinc.hidden_dims=$HIDDEN_DIM \
+    ++datamodule.args.task_specific_args.qm9.df_path=./data/graphium/neurips2023/small-dataset/qm9.csv \
+    ++datamodule.args.task_specific_args.qm9.splits_path=./data/graphium/neurips2023/small-dataset/qm9_random_splits.pt \
+    ++datamodule.args.task_specific_args.tox21.df_path=./data/graphium/neurips2023/small-dataset/Tox21-7k-12-labels.csv \
+    ++datamodule.args.task_specific_args.tox21.splits_path=./data/graphium/neurips2023/small-dataset/Tox21_random_splits.pt \
+    ++datamodule.args.task_specific_args.zinc.df_path=./data/graphium/neurips2023/small-dataset/ZINC12k.csv \
+    ++datamodule.args.task_specific_args.zinc.splits_path=./data/graphium/neurips2023/small-dataset/ZINC12k_random_splits.pt
