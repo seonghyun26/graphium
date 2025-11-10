@@ -116,7 +116,6 @@ def load_datamodule(
     module_class = DATAMODULE_DICT[config["datamodule"]["module_type"]]
 
     if accelerator_type != "ipu":
-        print(config["datamodule"]["args"])
         datamodule = module_class(
             **config["datamodule"]["args"],
         )

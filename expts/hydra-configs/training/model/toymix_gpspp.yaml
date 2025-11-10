@@ -1,6 +1,6 @@
 # @package _global_
 
-# GPS++ model with the PCQMv2 dataset.
+# GPS++ model with the ToyMix dataset.
 constants:
   name: toymix_gpspp_4layer
   seed: 42
