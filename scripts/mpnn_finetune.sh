@@ -45,6 +45,7 @@ for task in "${TASK_LIST[@]}"; do
     hidden_dim="${HIDDEN_DIM_LIST[$i]}"
         echo $task with $ckpt and hidden dimension $hidden_dim
 
+        # ++finetuning.unfreeze_pretrained_depth=16 \
         CUDA_VISIBLE_DEVICES=$1 graphium-train \
             model=mpnn \
             accelerator=gpu \
@@ -54,12 +55,11 @@ for task in "${TASK_LIST[@]}"; do
             ++datamodule.args.tdc_benchmark_names=$task \
             +finetuning=admet \
             ++finetuning.pretrained_model=$ckpt \
-            ++finetuning.unfreeze_pretrained_depth=16 \
             ++constants.seed=0 \
             ++constants.wandb.entity=eddy26 \
             ++constants.wandb.save_dir=null \
             ++constants.wandb.project=graphium \
-            ++constants.wandb.tags="['mpnn','finetune','unfree_pretrained']" \
+            ++constants.wandb.tags="['mpnn','finetune']" \
             ++constants.raise_train_error=False \
             ++constants.max_epochs=100 \
             ++architecture.pre_nn.hidden_dims=${hidden_dim} \
