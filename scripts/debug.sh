@@ -1,7 +1,7 @@
 cd ../
 
 DEVICE=${1:-0}
-TASK_LIST=('caco2_wang')
+TASK_LIST=('hia_hou')
 # TASK_LIST=(
 #     'caco2_wang' 'hia_hou' 'pgp_broccatelli' 'bioavailability_ma' 'lipophilicity_astrazeneca' 'solubility_aqsoldb' 
 #     'bbb_martins' 'ppbr_az' 'vdss_lombardo' 

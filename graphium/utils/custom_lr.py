@@ -33,7 +33,7 @@ class WarmUpLinearLR(_LRScheduler):
         self.warmup_epochs = warmup_epochs
         self.min_lr = min_lr
         self.last_epoch = last_epoch
-        super(WarmUpLinearLR, self).__init__(optimizer, last_epoch, verbose)
+        super(WarmUpLinearLR, self).__init__(optimizer, last_epoch)
 
     def get_lr(self):
         if not self._get_lr_called_within_step:

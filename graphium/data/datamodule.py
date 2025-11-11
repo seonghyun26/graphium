@@ -1389,7 +1389,7 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
                 torch.save(self.task_norms, filename, pickle_protocol=4)
             # if any of the above three condition does not satisfy, we load from file.
             else:
-                self.task_norms = torch.load(filename)
+                self.task_norms = torch.load(filename, weights_only=False)
 
     def normalize_label(self, dataset: Datasets.MultitaskDataset, stage) -> Datasets.MultitaskDataset:
         """
