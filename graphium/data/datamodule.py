@@ -2525,6 +2525,15 @@ class ADMETBenchmarkDataModule(MultitaskFromSmilesDataModule):
         split_path = fs.join(cache_dir, f"{name}_split.csv")
         split.to_csv(split_path, index=False)
 
+        # if name in ["half_life_obach"]:
+        #     label_normalization = {
+        #         "method": "unit",
+        #         "normalize_val_test": False,
+        #     }
+        # else:
+            # label_normalization = None
+        label_normalization = None    
+
         return DatasetProcessingParams(
             df=data,
             idx_col=None,
@@ -2533,6 +2542,7 @@ class ADMETBenchmarkDataModule(MultitaskFromSmilesDataModule):
             splits_path=split_path,
             split_names=["train", "val", "test"],
             task_level="graph",
+            label_normalization=label_normalization,
         )
 
 

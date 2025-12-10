@@ -37,10 +37,11 @@ for task in "${TASK_LIST[@]}"; do
             ++architecture.gnn.depth=16 \
             ++architecture.gnn.in_dim=${hidden_dim} \
             ++architecture.gnn.out_dim=${hidden_dim} \
-            ++constants.gnn_edge_dim=${hidden_dim} \
             ++architecture.gnn.hidden_dims=${hidden_dim} \
+            ++constants.gnn_edge_dim=${hidden_dim} \
             ++architecture.graph_output_nn.graph.hidden_dims=${hidden_dim} \
             ++architecture.graph_output_nn.graph.out_dim=${hidden_dim} \
+            ++architecture.task_heads.${task}.in_dim=${hidden_dim} \
             ++architecture.task_heads.${task}.hidden_dims=${hidden_dim} 
 
         sleep 1

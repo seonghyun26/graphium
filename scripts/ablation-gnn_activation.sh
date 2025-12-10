@@ -9,7 +9,8 @@ ACTIVATION_LIST=(
     SiLU
     None
 )
-HIDDEN_DIM_LIST=(46 210 696)
+# HIDDEN_DIM_LIST=(46 210 696)
+HIDDEN_DIM_LIST=(2300)
 task=ppbr_az
 
 for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do

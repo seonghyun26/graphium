@@ -1,5 +1,5 @@
 ACTIVATION_LIST=(
-    ReLU
+    # ReLU
     Tanh
     ELU
     SELU
@@ -9,7 +9,7 @@ ACTIVATION_LIST=(
     SiLU
     None
 )
-HIDDEN_DIM_LIST=(40 128 400)
+HIDDEN_DIM_LIST=(128 400)
 task=ppbr_az
 
 for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
@@ -37,7 +37,8 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++architecture.gnn.hidden_dims=${hidden_dim} \
             ++architecture.graph_output_nn.graph.hidden_dims=${hidden_dim} \
             ++architecture.graph_output_nn.graph.out_dim=${hidden_dim} \
-            ++architecture.task_heads.${task}.hidden_dims=${hidden_dim} 
+            ++architecture.task_heads.${task}.hidden_dims=${hidden_dim} \
+            ++architecture.task_heads.${task}.activation=${activation} 
         
         sleep 1
     done
