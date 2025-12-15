@@ -1,15 +1,16 @@
 cd ../
 
 
-TASK_LIST=('pgp_broccatelli' 'bioavailability_ma')
-# TASK_LIST=(
-#     'caco2_wang' 'hia_hou' 'pgp_broccatelli' 'bioavailability_ma' 'lipophilicity_astrazeneca' 'solubility_aqsoldb' 
-#     'bbb_martins' 'ppbr_az' 'vdss_lombardo' 
-#     'cyp2d6_veith' 'cyp3a4_veith' 'cyp2c9_veith' 'cyp2c9_substrate_carbonmangels' 'cyp2d6_substrate_carbonmangels' 'cyp3a4_substrate_carbonmangels' 
-#     'half_life_obach' 'clearance_hepatocyte_az' 'clearance_microsome_az' 
-#     'ld50_zhu' 'herg' 'ames' 'dili' 
-# )
-HIDDEN_DIM_LIST=(46 210 696)
+# TASK_LIST=('pgp_broccatelli' 'bioavailability_ma')
+TASK_LIST=(
+    'caco2_wang' 'hia_hou' 'pgp_broccatelli' 'bioavailability_ma' 'lipophilicity_astrazeneca' 'solubility_aqsoldb' 
+    'bbb_martins' 'ppbr_az' 'vdss_lombardo' 
+    'cyp2d6_veith' 'cyp3a4_veith' 'cyp2c9_veith' 'cyp2c9_substrate_carbonmangels' 'cyp2d6_substrate_carbonmangels' 'cyp3a4_substrate_carbonmangels' 
+    'half_life_obach' 'clearance_hepatocyte_az' 'clearance_microsome_az' 
+    'ld50_zhu' 'herg' 'ames' 'dili' 
+)
+HIDDEN_DIM_LIST=(2200)
+# HIDDEN_DIM_LIST=(46 210 696 2200)
 
 for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
     echo "Hidden dimension: $hidden_dim"

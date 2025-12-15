@@ -199,4 +199,4 @@ dmypy.json
 
 # data
 *.csv
-*.pt
+*.parquet

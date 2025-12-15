@@ -32,10 +32,10 @@ TASK_LIST=(
     'ld50_zhu' 'herg' 'ames' 'dili' 
 )
 CKPT_LIST=(
-    ./model/gcn/small.ckpt
-    ./model/gcn/medium.ckpt
-    ./model/gcn/large.ckpt
-    # ./models_checkpoints/small-dataset/gcn/2025-11-03_12-24-02_20251103_122402/neurips2023_small_data_gcn_20251103_122402.ckpt
+    # ./model/gcn/toymix_small.ckpt
+    # ./model/gcn/toymix_medium.ckpt
+    # ./model/gcn/toymix_large.ckpt
+    ./model/gcn/toymix_ultra.ckpt
 )
 
 for task in "${TASK_LIST[@]}"; do

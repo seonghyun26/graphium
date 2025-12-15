@@ -2,7 +2,8 @@ cd ../
 
 PRETRAIN_DATASET=${1:-'toymix'}
 DEVICE=${2:-'0'}
-HIDDEN_DIM_LIST=(46 210 696)
+HIDDEN_DIM_LIST=(2200)
+# HIDDEN_DIM_LIST=(46 210 696 2200)
 
 echo "Pretraining on $PRETRAIN_DATASET"
 for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do

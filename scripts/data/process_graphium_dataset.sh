@@ -45,3 +45,15 @@ if [ "$dataset" == "largemix" ]; then
         ++datamodule.args.task_specific_args.l1000_mcf7.task_level=graph \
         ++datamodule.args.processed_graph_data_path=./data/graphium/largemix 
 fi
+
+if [ "$dataset" == "rxrx3" ]; then
+    graphium data prepare \
+        accelerator=gpu \
+        ++datamodule.args.task_specific_args.rxrx3.df_path=./data/rxrx3_smiles_embeddings.csv \
+        ++datamodule.args.task_specific_args.rxrx3.splits_path=./data/rxrx3_random_splits.pt \
+        ++datamodule.args.task_specific_args.rxrx3.smiles_col='SMILES' \
+        ++datamodule.args.task_specific_args.rxrx3.label_cols='feature_*' \
+        ++datamodule.args.task_specific_args.rxrx3.task_level=graph \
+        ++datamodule.args.processed_graph_data_path=./data/rxrx3 
+fi
+
