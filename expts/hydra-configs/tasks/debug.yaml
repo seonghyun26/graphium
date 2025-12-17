@@ -1,0 +1,3 @@
+defaults:
+  - task_heads: debug
+  - loss_metrics_datamodule: debug
