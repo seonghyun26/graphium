@@ -61,7 +61,7 @@ datamodule:
     task_specific_args:
       qm9:
         df: null
-        df_path: ${constants.data_dir}/qm9.csv.gz
+        df_path: ${constants.data_dir}/qm9.csv
         # wget https://storage.valencelabs.com/graphium/datasets/neurips_2023/Small-dataset/qm9.csv.gz
         # or set path as the URL directly
         smiles_col: "smiles"
@@ -76,7 +76,7 @@ datamodule:
 
       tox21:
         df: null
-        df_path: ${constants.data_dir}/Tox21-7k-12-labels.csv.gz
+        df_path: ${constants.data_dir}/Tox21-7k-12-labels.csv
         # wget https://storage.valencelabs.com/graphium/datasets/neurips_2023/Small-dataset/Tox21-7k-12-labels.csv.gz
         # or set path as the URL directly
         smiles_col: "smiles"
@@ -88,7 +88,7 @@ datamodule:
 
       zinc:
         df: null
-        df_path: ${constants.data_dir}/ZINC12k.csv.gz
+        df_path: ${constants.data_dir}/ZINC12k.csv
         # wget https://storage.valencelabs.com/graphium/datasets/neurips_2023/Small-dataset/ZINC12k.csv.gz
         # or set path as the URL directly
         smiles_col: "smiles"
