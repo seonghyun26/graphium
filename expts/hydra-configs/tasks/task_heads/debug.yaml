@@ -2,6 +2,17 @@
 
 architecture:
   task_heads:
+    rxrx3:
+      task_level: graph
+      out_dim: 384
+      hidden_dims: 128
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
     l1000_vcap:
       task_level: graph
       out_dim: 2934
@@ -13,14 +24,14 @@ architecture:
       normalization: ${architecture.pre_nn.normalization}
       last_normalization: "none"
       residual_type: none
-    # l1000_mcf7:
-    #   task_level: graph
-    #   out_dim: 2934
-    #   hidden_dims: 256
-    #   depth: 2
-    #   activation: none
-    #   last_activation: none
-    #   dropout: ${architecture.pre_nn.dropout}
-    #   normalization: ${architecture.pre_nn.normalization}
-    #   last_normalization: "none"
-    #   residual_type: none
+    l1000_mcf7:
+      task_level: graph
+      out_dim: 2934
+      hidden_dims: 256
+      depth: 2
+      activation: none
+      last_activation: none
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none

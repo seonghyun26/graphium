@@ -2,22 +2,30 @@
 
 predictor:
   metrics_on_progress_bar:
+    rxrx3: ['mae']
     l1000_vcap: []
-    # l1000_mcf7: []
+    l1000_mcf7: []
   metrics_on_training_set:
+    rxrx3: []
     l1000_vcap: []
-    # l1000_mcf7: []
+    l1000_mcf7: []
   loss_fun:
+    rxrx3: mae_ipu
     l1000_vcap:
       name: hybrid_ce_ipu
       n_brackets: 3
       alpha: 0.5
-    # l1000_mcf7:
-    #   name: hybrid_ce_ipu
-    #   n_brackets: 3
-    #   alpha: ${predictor.loss_fun.l1000_vcap.alpha}
+    l1000_mcf7:
+      name: hybrid_ce_ipu
+      n_brackets: 3
+      alpha: ${predictor.loss_fun.l1000_vcap.alpha}
 
 metrics:
+  rxrx3:
+  - name: mae
+    metric: mae_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu
   l1000_vcap: &classif_metrics
     - name: auroc
       metric: auroc
@@ -37,11 +45,19 @@ metrics:
       ignore_index: -1000
       multitask_handling: mean-per-label
       threshold_kwargs: null
-  # l1000_mcf7: *classif_metrics
+  l1000_mcf7: *classif_metrics
 
 datamodule:
   args: # Matches that in the test_multitask_datamodule.py case.
     task_specific_args:   # To be replaced by a new class "DatasetParams"
+      rxrx3:
+        df_path: /home/shpark/prj-molrepr/graphium/data/rxrx3/rxrx3_smiles_embeddings.csv
+        smiles_col: "SMILES_nometa"
+        label_cols: feature_*
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
       l1000_vcap:
         df: null
         df_path: ./data/graphium/neurips2023/large-dataset/LINCS_L1000_VCAP_0-2_th2.csv
@@ -50,12 +66,11 @@ datamodule:
         task_level: graph
         splits_path: ./data/graphium/neurips2023/large-dataset/l1000_vcap_random_splits.pt  # Download with `wget https://storage.valencelabs.com/graphium/datasets/neurips_2023/Large-dataset/l1000_vcap_random_splits.pt`
         epoch_sampling_fraction: 1.0
-
-      # l1000_mcf7:
-      #   df: null
-      #   df_path: ./data/graphium/neurips2023/large-dataset/LINCS_L1000_MCF7_0-2_th2.csv
-      #   smiles_col: "SMILES"
-      #   label_cols: geneID-*  # geneID-* means all columns starting with "geneID-"
-      #   task_level: graph
-      #   splits_path: ./data/graphium/neurips2023/large-dataset/l1000_mcf7_random_splits.pt  # Download with `wget https://storage.valencelabs.com/graphium/datasets/neurips_2023/Large-dataset/l1000_mcf7_random_splits.pt`
-      #   epoch_sampling_fraction: 1.0
+      l1000_mcf7:
+        df: null
+        df_path: ./data/graphium/neurips2023/large-dataset/LINCS_L1000_MCF7_0-2_th2.csv
+        smiles_col: "SMILES"
+        label_cols: geneID-*  # geneID-* means all columns starting with "geneID-"
+        task_level: graph
+        splits_path: ./data/graphium/neurips2023/large-dataset/l1000_mcf7_random_splits.pt  # Download with `wget https://storage.valencelabs.com/graphium/datasets/neurips_2023/Large-dataset/l1000_mcf7_random_splits.pt`
+        epoch_sampling_fraction: 1.0
