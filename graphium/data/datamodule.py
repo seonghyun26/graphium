@@ -981,13 +981,13 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
                 logger.info(f"Removed Hydrogen molecule: {smiles}")
             return has_atoms
 
+        print("task_dataset_processing_params: ", self.task_dataset_processing_params)
         if self._data_is_prepared:
             logger.info("Data is already prepared.")
             self.get_label_statistics(self.processed_graph_data_path, self.data_hash, dataset=None)
             return
 
         """Load all single-task dataframes."""
-        # order = ["graph_zinc", "graph_l1000_vcap", "None_l1000_mcf7", "None_pcqm4m_g25_n4", "None_pcba_1328", "graph_tox21", "graph_qm9"]
         # self.task_dataset_processing_params_reordered = {task: self.task_dataset_processing_params[task] for task in order}
         task_df = {}
         for task, args in self.task_dataset_processing_params.items():
@@ -1553,7 +1553,7 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
             progress=True,
             n_jobs=self.featurization_n_jobs,
             backend=self.featurization_backend,
-            tqdm_kwargs={"desc": f"featurizing_smiles, batch={batch_size}"},
+            tqdm_kwargs={"desc": f"Featurizing_smiles, batch={batch_size}"},
         )
 
         # Warn about None molecules
@@ -1903,7 +1903,7 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
                 train, val, test = split_names
 
                 if file_type == "pt":
-                    splits = torch.load(splits_path)
+                    splits = torch.load(splits_path, weights_only=False)
                 elif file_type in ["csv", "tsv"]:
                     with fsspec.open(str(splits_path)) as f:
                         splits = self._read_csv(splits_path)
