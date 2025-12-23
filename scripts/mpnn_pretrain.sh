@@ -2,7 +2,8 @@ cd ../
 
 PRETRAIN_DATASET=${1:-'toymix'}
 DEVICE=${2:-'0'}
-HIDDEN_DIM_LIST=(40 128 400)
+HIDDEN_DIM_LIST=(900)
+# HIDDEN_DIM_LIST=(40 128 400)
 
 echo "Pretraining on $PRETRAIN_DATASET"
 for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
@@ -20,7 +21,7 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++constants.wandb.entity=eddy26 \
             ++constants.wandb.save_dir=null \
             ++constants.wandb.project=graphium \
-            ++constants.wandb.tags="['mpnn', 'pretrain']" \
+            ++constants.wandb.tags="['mpnn','pretrain']" \
             ++architecture.pre_nn.hidden_dims=${hidden_dim} \
             ++architecture.pre_nn.out_dim=${hidden_dim} \
             ++architecture.pre_nn_edges.out_dim=${hidden_dim} \

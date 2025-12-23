@@ -2,7 +2,7 @@ cd ../
 
 PRETRAIN_DATASET=${1:-'toymix'}
 DEVICE=${2:-'0'}
-HIDDEN_DIM_LIST=(2200)
+HIDDEN_DIM_LIST=(5120)
 # HIDDEN_DIM_LIST=(46 210 696 2200)
 
 echo "Pretraining on $PRETRAIN_DATASET"
@@ -32,6 +32,7 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++architecture.task_heads.qm9.hidden_dims=${hidden_dim} \
             ++architecture.task_heads.tox21.hidden_dims=${hidden_dim} \
             ++architecture.task_heads.zinc.hidden_dims=${hidden_dim} \
+            ++datamodule.args.batch_size_training=1024 \
             ++datamodule.args.task_specific_args.qm9.df_path=./data/graphium/neurips2023/small-dataset/qm9.csv \
             ++datamodule.args.task_specific_args.qm9.splits_path=./data/graphium/neurips2023/small-dataset/qm9_random_splits.pt \
             ++datamodule.args.task_specific_args.tox21.df_path=./data/graphium/neurips2023/small-dataset/Tox21-7k-12-labels.csv \

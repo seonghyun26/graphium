@@ -9,7 +9,7 @@ TASK_LIST=(
     'half_life_obach' 'clearance_hepatocyte_az' 'clearance_microsome_az' 
     'ld50_zhu' 'herg' 'ames' 'dili' 
 )
-HIDDEN_DIM_LIST=(2200)
+HIDDEN_DIM_LIST=(5120)
 # HIDDEN_DIM_LIST=(46 210 696 2200)
 
 for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
@@ -29,7 +29,7 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++constants.wandb.entity=eddy26 \
             ++constants.wandb.save_dir=null \
             ++constants.wandb.project=graphium \
-            ++constants.wandb.tags="['gcn', 'scratch']" \
+            ++constants.wandb.tags="['gcn','scratch']" \
             ++architecture.pre_nn.out_dim=${hidden_dim} \
             ++architecture.gnn.depth=16 \
             ++architecture.gnn.in_dim=${hidden_dim} \
@@ -37,6 +37,7 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++architecture.gnn.hidden_dims=${hidden_dim} \
             ++architecture.graph_output_nn.graph.hidden_dims=${hidden_dim} \
             ++architecture.graph_output_nn.graph.out_dim=${hidden_dim} \
-            ++architecture.task_heads.${task}.hidden_dims=${hidden_dim} 
+            ++architecture.task_heads.${task}.hidden_dims=${hidden_dim} \
+            ++datamodule.args.batch_size_training=400
     done
 done

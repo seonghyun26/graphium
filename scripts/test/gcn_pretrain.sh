@@ -1,7 +1,7 @@
 cd ../../
 
 DEVICE=${1:-'0'}
-HIDDEN_DIM_LIST=(2200)
+HIDDEN_DIM_LIST=(5120)
 # HIDDEN_DIM_LIST=(46 210 696 2200)
 
 echo "Pretraining on $PRETRAIN_DATASET"
@@ -31,7 +31,8 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
         ++architecture.task_heads.qm9.hidden_dims=${hidden_dim} \
         ++architecture.task_heads.tox21.hidden_dims=${hidden_dim} \
         ++architecture.task_heads.zinc.hidden_dims=${hidden_dim} \
-        ++architecture.task_heads.rxrx3.hidden_dims=${hidden_dim} 
+        ++architecture.task_heads.rxrx3.hidden_dims=${hidden_dim} \
+        ++datamodule.args.batch_size_training=1024 
 
     sleep 1
 done

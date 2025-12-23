@@ -32,11 +32,9 @@ TASK_LIST=(
     'ld50_zhu' 'herg' 'ames' 'dili' 
 )
 CKPT_LIST=(
-    # ./model/gcn/toymix_small.ckpt
-    # ./model/gcn/toymix_medium.ckpt
-    # ./model/gcn/toymix_large.ckpt
-    ./model/gcn/toymix_ultra.ckpt
+    ./model/toymix/gcn/toymix_500M.ckpt
 )
+HID_DIM=5120
 
 for task in "${TASK_LIST[@]}"; do
     for ckpt in "${CKPT_LIST[@]}"; do
@@ -49,9 +47,16 @@ for task in "${TASK_LIST[@]}"; do
             ++constants.task=$task \
             ++finetuning.task=$task \
             ++datamodule.args.tdc_benchmark_names=$task \
+            ++datamodule.args.num_workers=0 \
             +finetuning=admet \
             ++finetuning.pretrained_model=$ckpt \
             ++finetuning.unfreeze_pretrained_depth=16 \
+            ++finetuning.epoch_unfreeze_all=40 \
+            ++finetuning.finetuning_head.in_dim=${HID_DIM} \
+            ++finetuning.finetuning_head.hidden_dims=${HID_DIM} \
+            ++finetuning.finetuning_head.depth=4 \
+            ++finetuning.new_out_dim=${HID_DIM} \
+            ++architecture.task_heads.${task}.hidden_dims=${HID_DIM} \
             ++constants.seed=0 \
             ++constants.wandb.entity=eddy26 \
             ++constants.wandb.save_dir=null \
