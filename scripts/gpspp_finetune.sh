@@ -1,4 +1,6 @@
-cd ../../
+cd ../
+
+DEVICE=${1:-'0'}
 
 TASK_LIST=(
     'caco2_wang' 'hia_hou' 'pgp_broccatelli' 'bioavailability_ma' 'lipophilicity_astrazeneca' 'solubility_aqsoldb' 
@@ -8,37 +10,37 @@ TASK_LIST=(
     'ld50_zhu' 'herg' 'ames' 'dili' 
 )
 CKPT_LIST=(
-    ./model/toymix/gcn/toymixrxrx3_500M.ckpt
+    ./model/largemix/gpspp/largemix_15M.ckpt
 )
-HID_DIM=5120
 
 for task in "${TASK_LIST[@]}"; do
     for ckpt in "${CKPT_LIST[@]}"; do
         echo $task with $ckpt
 
         CUDA_VISIBLE_DEVICES=$1 graphium-train \
-            model=gcn \
+            model=gpspp \
             accelerator=gpu \
             tasks=admet \
             ++constants.task=$task \
             ++finetuning.task=$task \
             ++datamodule.args.tdc_benchmark_names=$task \
-            ++datamodule.args.num_workers=0 \
-            +finetuning=admet \
+            +finetuning=admet_gpspp \
             ++finetuning.pretrained_model=$ckpt \
-            ++finetuning.unfreeze_pretrained_depth=16 \
+            ++finetuning.unfreeze_pretrained_depth=4 \
             ++finetuning.epoch_unfreeze_all=40 \
-            ++finetuning.finetuning_head.in_dim=${HID_DIM} \
-            ++finetuning.finetuning_head.hidden_dims=${HID_DIM} \
+            ++finetuning.finetuning_head.in_dim=320 \
+            ++finetuning.finetuning_head.hidden_dims=320 \
             ++finetuning.finetuning_head.depth=4 \
-            ++finetuning.new_out_dim=${HID_DIM} \
-            ++architecture.task_heads.${task}.hidden_dims=${HID_DIM} \
+            ++finetuning.new_out_dim=320 \
+            ++finetuning.added_depth=4 \
+            ++architecture.task_heads.${task}.hidden_dims=320 \
             ++constants.seed=0 \
             ++constants.wandb.entity=eddy26 \
             ++constants.wandb.save_dir=null \
             ++constants.wandb.project=graphium \
-            ++constants.wandb.tags="['gcn','finetune','unfree_pretrained','toymixrxrx3']" \
-            ++constants.raise_train_error=False 
+            ++constants.wandb.tags="['gpspp','finetune','largemix','unfree_pretrained']" \
+            ++constants.raise_train_error=False \
+            ++datamodule.args.num_workers=0 
             
         sleep 1
     done

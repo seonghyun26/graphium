@@ -14,3 +14,10 @@ defaults:
   # Specializations
   - training/accelerator: ${training}_${accelerator}
   - training/model: ${training}_${model}
+
+constants:
+  seed: 0
+  wandb:
+    entity: eddy26
+    save_dir: null
+    project: graphium

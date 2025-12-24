@@ -8,7 +8,7 @@ TASK_LIST=(
     'half_life_obach' 'clearance_hepatocyte_az' 'clearance_microsome_az' 
     'ld50_zhu' 'herg' 'ames' 'dili' 
 )
-HIDDEN_DIM_LIST=(320)
+HIDDEN_DIM_LIST=(2048)
 for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
     echo "Hidden dimension: $hidden_dim"
 
