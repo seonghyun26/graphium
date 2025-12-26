@@ -111,13 +111,13 @@ datamodule:
         splits_path: ./data/graphium/neurips2023/large-dataset/l1000_vcap_random_splits.pt  # Download with `wget https://storage.valencelabs.com/graphium/datasets/neurips_2023/Large-dataset/l1000_vcap_random_splits.pt`
         epoch_sampling_fraction: 1.0
       l1000_mcf7:
-          df: null
-          df_path: ./data/graphium/neurips2023/large-dataset/LINCS_L1000_MCF7_0-2_th2.csv.gz
-          smiles_col: "SMILES"
-          label_cols: geneID-*  # geneID-* means all columns starting with "geneID-"
-          task_level: graph
-          splits_path: ./data/graphium/neurips2023/large-dataset/l1000_mcf7_random_splits.pt  # Download with `wget https://storage.valencelabs.com/graphium/datasets/neurips_2023/Large-dataset/l1000_mcf7_random_splits.pt`
-          epoch_sampling_fraction: 1.0
+        df: null
+        df_path: ./data/graphium/neurips2023/large-dataset/LINCS_L1000_MCF7_0-2_th2.csv.gz
+        smiles_col: "SMILES"
+        label_cols: geneID-*  # geneID-* means all columns starting with "geneID-"
+        task_level: graph
+        splits_path: ./data/graphium/neurips2023/large-dataset/l1000_mcf7_random_splits.pt  # Download with `wget https://storage.valencelabs.com/graphium/datasets/neurips_2023/Large-dataset/l1000_mcf7_random_splits.pt`
+        epoch_sampling_fraction: 1.0
       pcba_1328:
         df: null
         df_path: ./data/graphium/neurips2023/large-dataset/PCBA_1328_1564k.parquet
@@ -157,39 +157,6 @@ architecture:
       task_level: graph
       out_dim: 384
       hidden_dims: 128
-      depth: 2
-      activation: relu
-      last_activation: none
-      dropout: ${architecture.pre_nn.dropout}
-      normalization: ${architecture.pre_nn.normalization}
-      last_normalization: "none"
-      residual_type: none
-    qm9:
-      task_level: graph
-      out_dim: 19
-      hidden_dims: 128
-      depth: 2
-      activation: relu
-      last_activation: none
-      dropout: ${architecture.pre_nn.dropout}
-      normalization: ${architecture.pre_nn.normalization}
-      last_normalization: "none"
-      residual_type: none
-    tox21:
-      task_level: graph
-      out_dim: 12
-      hidden_dims: 64
-      depth: 2
-      activation: relu
-      last_activation: none
-      dropout: ${architecture.pre_nn.dropout}
-      normalization: ${architecture.pre_nn.normalization}
-      last_normalization: "none"
-      residual_type: none
-    zinc:
-      task_level: graph
-      out_dim: 3
-      hidden_dims: 32
       depth: 2
       activation: relu
       last_activation: none

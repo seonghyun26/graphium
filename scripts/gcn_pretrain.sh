@@ -52,7 +52,7 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++constants.wandb.entity=eddy26 \
             ++constants.wandb.save_dir=null \
             ++constants.wandb.project=graphium \
-            ++constants.wandb.tags="['gcn', 'pretrain']" \
+            ++constants.wandb.tags="['gcn','pretrain','largemix']" \
             ++architecture.pre_nn.out_dim=${hidden_dim} \
             ++architecture.gnn.depth=16 \
             ++architecture.gnn.in_dim=${hidden_dim} \
@@ -60,31 +60,30 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++architecture.gnn.hidden_dims=${hidden_dim} \
             ++architecture.graph_output_nn.graph.hidden_dims=${hidden_dim} \
             ++architecture.graph_output_nn.graph.out_dim=${hidden_dim} \
-            ++architecture.task_heads.pcqm4m_g25_n4.hidden_dims=${hidden_dim} \
-            ++architecture.task_heads.pcba_1328.hidden_dims=${hidden_dim} \
-            ++architecture.task_heads.l1000_vcap.hidden_dims=${hidden_dim} \
-            ++architecture.task_heads.l1000_mcf7.hidden_dims=${hidden_dim} \
-            ++datamodule.args.task_specific_args.l1000_vcap.df_path=./data/graphium/neurips2023/large-dataset/LINCS_L1000_VCAP_0-2_th2.csv.gz \
-            ++datamodule.args.task_specific_args.l1000_vcap.splits_path=./data/graphium/neurips2023/large-dataset/l1000_vcap_random_splits.pt \
-            ++datamodule.args.task_specific_args.l1000_vcap.smiles_col='SMILES' \
-            ++datamodule.args.task_specific_args.l1000_vcap.label_cols=geneID-* \
-            ++datamodule.args.task_specific_args.l1000_vcap.task_level=graph \
-            ++datamodule.args.task_specific_args.l1000_mcf7.df_path=./data/graphium/neurips2023/large-dataset/LINCS_L1000_MCF7_0-2_th2.csv.gz \
-            ++datamodule.args.task_specific_args.l1000_mcf7.splits_path=./data/graphium/neurips2023/large-dataset/l1000_mcf7_random_splits.pt \
-            ++datamodule.args.task_specific_args.l1000_mcf7.smiles_col='SMILES' \
-            ++datamodule.args.task_specific_args.l1000_mcf7.label_cols=geneID-* \
-            ++datamodule.args.task_specific_args.l1000_mcf7.task_level=graph \
-            ++datamodule.args.task_specific_args.pcba_1328.df_path=./data/graphium/neurips2023/large-dataset/PCBA_1328_1564k.parquet \
-            ++datamodule.args.task_specific_args.pcba_1328.splits_path=./data/graphium/neurips2023/large-dataset/pcba_1328_random_splits.pt \
-            ++datamodule.args.task_specific_args.pcba_1328.smiles_col='SMILES' \
-            ++datamodule.args.task_specific_args.pcba_1328.label_cols=assayID-* \
-            ++datamodule.args.task_specific_args.pcba_1328.task_level=graph \
-            ++datamodule.args.task_specific_args.pcqm4m_g25_n4.df_path=./data/graphium/neurips2023/large-dataset/PCQM4M_G25_N4.parquet \
-            ++datamodule.args.task_specific_args.pcqm4m_g25_n4.splits_path=./data/graphium/neurips2023/large-dataset/pcqm4m_g25_n4_random_splits.pt \
-            ++datamodule.args.task_specific_args.pcqm4m_g25_n4.smiles_col='ordered_smiles' \
-            ++datamodule.args.task_specific_args.pcqm4m_g25_n4.label_cols='graph_*' \
-            ++datamodule.args.task_specific_args.pcqm4m_g25_n4.task_level=graph
+            ++datamodule.args.batch_size_training=400 
     
+    elif [ $PRETRAIN_DATASET == 'largemix_rxrx3' ]; then
+        echo "Pretraining on large+rxrx3 dataset"
+        CUDA_VISIBLE_DEVICES=$DEVICE graphium-train \
+            model=gcn \
+            accelerator=gpu \
+            tasks=largemix_rxrx3 \
+            training=largemix \
+            architecture=largemix \
+            ++constants.seed=0 \
+            ++constants.wandb.entity=eddy26 \
+            ++constants.wandb.save_dir=null \
+            ++constants.wandb.project=graphium \
+            ++constants.wandb.tags="['gcn','pretrain','largemix','rxrx3']" \
+            ++architecture.pre_nn.out_dim=${hidden_dim} \
+            ++architecture.gnn.depth=16 \
+            ++architecture.gnn.in_dim=${hidden_dim} \
+            ++architecture.gnn.out_dim=${hidden_dim} \
+            ++architecture.gnn.hidden_dims=${hidden_dim} \
+            ++architecture.graph_output_nn.graph.hidden_dims=${hidden_dim} \
+            ++architecture.graph_output_nn.graph.out_dim=${hidden_dim} \
+            ++datamodule.args.batch_size_training=400 
+
     else
         echo "Invalid dataset"
     fi

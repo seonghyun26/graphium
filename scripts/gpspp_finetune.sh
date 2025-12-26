@@ -10,7 +10,8 @@ TASK_LIST=(
     'ld50_zhu' 'herg' 'ames' 'dili' 
 )
 CKPT_LIST=(
-    ./model/largemix/gpspp/largemix_15M.ckpt
+    # ./model/largemix/gpspp/largemix_15M.ckpt
+    ./model/largemix/gpspp/largemix_gpspp_500M.ckpt
 )
 
 for task in "${TASK_LIST[@]}"; do
@@ -27,13 +28,13 @@ for task in "${TASK_LIST[@]}"; do
             +finetuning=admet_gpspp \
             ++finetuning.pretrained_model=$ckpt \
             ++finetuning.unfreeze_pretrained_depth=4 \
-            ++finetuning.epoch_unfreeze_all=40 \
-            ++finetuning.finetuning_head.in_dim=320 \
-            ++finetuning.finetuning_head.hidden_dims=320 \
+            ++finetuning.epoch_unfreeze_all=20 \
+            ++finetuning.finetuning_head.in_dim=256 \
+            ++finetuning.finetuning_head.hidden_dims=256 \
             ++finetuning.finetuning_head.depth=4 \
-            ++finetuning.new_out_dim=320 \
+            ++finetuning.new_out_dim=256 \
             ++finetuning.added_depth=4 \
-            ++architecture.task_heads.${task}.hidden_dims=320 \
+            ++architecture.task_heads.${task}.hidden_dims=256 \
             ++constants.seed=0 \
             ++constants.wandb.entity=eddy26 \
             ++constants.wandb.save_dir=null \
