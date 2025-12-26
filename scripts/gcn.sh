@@ -39,6 +39,7 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++architecture.graph_output_nn.graph.hidden_dims=${hidden_dim} \
             ++architecture.graph_output_nn.graph.out_dim=${hidden_dim} \
             ++architecture.task_heads.${task}.hidden_dims=${hidden_dim} \
-            ++datamodule.args.batch_size_training=400
+            ++datamodule.args.batch_size_training=400 \
+            ++trainer.model_checkpoint.save_last=False 
     done
 done

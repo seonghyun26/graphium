@@ -33,12 +33,7 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++architecture.task_heads.tox21.hidden_dims=${hidden_dim} \
             ++architecture.task_heads.zinc.hidden_dims=${hidden_dim} \
             ++datamodule.args.batch_size_training=1024 \
-            ++datamodule.args.task_specific_args.qm9.df_path=./data/graphium/neurips2023/small-dataset/qm9.csv \
-            ++datamodule.args.task_specific_args.qm9.splits_path=./data/graphium/neurips2023/small-dataset/qm9_random_splits.pt \
-            ++datamodule.args.task_specific_args.tox21.df_path=./data/graphium/neurips2023/small-dataset/Tox21-7k-12-labels.csv \
-            ++datamodule.args.task_specific_args.tox21.splits_path=./data/graphium/neurips2023/small-dataset/Tox21_random_splits.pt \
-            ++datamodule.args.task_specific_args.zinc.df_path=./data/graphium/neurips2023/small-dataset/ZINC12k.csv \
-            ++datamodule.args.task_specific_args.zinc.splits_path=./data/graphium/neurips2023/small-dataset/ZINC12k_random_splits.pt
+            ++trainer.model_checkpoint.save_last=False 
     
     elif [ $PRETRAIN_DATASET == 'largemix' ]; then
         echo "Pretraining on large dataset"
@@ -60,7 +55,8 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++architecture.gnn.hidden_dims=${hidden_dim} \
             ++architecture.graph_output_nn.graph.hidden_dims=${hidden_dim} \
             ++architecture.graph_output_nn.graph.out_dim=${hidden_dim} \
-            ++datamodule.args.batch_size_training=400 
+            ++datamodule.args.batch_size_training=400 \
+            ++trainer.model_checkpoint.save_last=False 
     
     elif [ $PRETRAIN_DATASET == 'largemix_rxrx3' ]; then
         echo "Pretraining on large+rxrx3 dataset"
@@ -82,7 +78,8 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++architecture.gnn.hidden_dims=${hidden_dim} \
             ++architecture.graph_output_nn.graph.hidden_dims=${hidden_dim} \
             ++architecture.graph_output_nn.graph.out_dim=${hidden_dim} \
-            ++datamodule.args.batch_size_training=400 
+            ++datamodule.args.batch_size_training=400 \
+            ++trainer.model_checkpoint.save_last=False 
 
     else
         echo "Invalid dataset"

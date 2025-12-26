@@ -9,6 +9,7 @@ TASK_LIST=(
     'ld50_zhu' 'herg' 'ames' 'dili' 
 )
 HIDDEN_DIM_LIST=(2048)
+
 for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
     echo "Hidden dimension: $hidden_dim"
 
@@ -20,6 +21,8 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             model=gpspp \
             accelerator=gpu \
             tasks=admet \
+            ++constants.task=$task \
+            ++datamodule.args.tdc_benchmark_names=$task \
             ++constants.seed=0 \
             ++constants.wandb.entity=eddy26 \
             ++constants.wandb.save_dir=null \
@@ -35,12 +38,9 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++architecture.gnn.in_dim=${hidden_dim} \
             ++architecture.gnn.hidden_dims=${hidden_dim} \
             ++architecture.gnn.out_dim=${hidden_dim} \
-            ++constants.task=$task \
-            ++datamodule.args.tdc_benchmark_names=$task \
-            ++architecture.task_heads.${task}.hidden_dims=${hidden_dim} \
-            ++accelerator.float32_matmul_precision=high \
-            ++architecture.gnn.layer_kwargs.precision=32 \
-            ++trainer.trainer.precision=32 
+            ++architecture.task_heads.${task}.hidden_dims=256 \
+            ++architecture.task_heads.${task}.depth=4 \
+            ++trainer.model_checkpoint.save_last=False 
     done
 done
 

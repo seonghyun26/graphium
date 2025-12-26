@@ -289,7 +289,7 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
         if cfg["trainer"]["model_checkpoint"]["save_last"] is True:
             checkpoint_path = f"{cfg['trainer']['model_checkpoint']['dirpath']}/{cfg['trainer']['model_checkpoint']['filename']}-v1.ckpt"
             # Log the initial model checkpoint to wandb
-            wandb.save(checkpoint_path)
+            # wandb.save(checkpoint_path)
         wandb.finish()
 
     # Save test metrics - Base utility in case someone doesn't use a logger.

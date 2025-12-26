@@ -10,8 +10,9 @@ TASK_LIST=(
     'ld50_zhu' 'herg' 'ames' 'dili' 
 )
 CKPT_LIST=(
-    # ./model/largemix/gpspp/largemix_15M.ckpt
-    ./model/largemix/gpspp/largemix_gpspp_500M.ckpt
+    # ./model/largemix/gpspp/largemix_gpspp_500M.ckpt
+    ./model/toymix/gpspp/toymix_500M.ckpt
+    # ./model/toymix/gpspp/toymixrxrx3_500M.ckpt
 )
 
 for task in "${TASK_LIST[@]}"; do
@@ -25,7 +26,7 @@ for task in "${TASK_LIST[@]}"; do
             ++constants.task=$task \
             ++finetuning.task=$task \
             ++datamodule.args.tdc_benchmark_names=$task \
-            +finetuning=admet_gpspp \
+            +finetuning=admet \
             ++finetuning.pretrained_model=$ckpt \
             ++finetuning.unfreeze_pretrained_depth=4 \
             ++finetuning.epoch_unfreeze_all=20 \
@@ -41,6 +42,7 @@ for task in "${TASK_LIST[@]}"; do
             ++constants.wandb.project=graphium \
             ++constants.wandb.tags="['gpspp','finetune','largemix','unfree_pretrained']" \
             ++constants.raise_train_error=False \
+            ++trainer.model_checkpoint.save_last=False \
             ++datamodule.args.num_workers=0 
             
         sleep 1
