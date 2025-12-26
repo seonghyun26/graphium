@@ -1,7 +1,3 @@
-cd ../../
-
-cd ../
-
 cd ../
 
 
@@ -12,6 +8,7 @@ TASK_LIST=(
     'half_life_obach' 'clearance_hepatocyte_az' 'clearance_microsome_az' 
     'ld50_zhu' 'herg' 'ames' 'dili' 
 )
+HIDDEN_DIM_LIST=(2048)
 
 for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
     echo "Hidden dimension: $hidden_dim"
@@ -30,13 +27,20 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++constants.wandb.entity=eddy26 \
             ++constants.wandb.save_dir=null \
             ++constants.wandb.project=graphium \
-            ++constants.wandb.tags="['gcn', 'scratch']" \
+            ++constants.wandb.tags="['gpspp','admet','scratch']" \
+            ++constants.norm='layer_norm' \
+            ++constants.raise_train_error=False \
+            ++constants.detect_anomaly=False \
             ++architecture.pre_nn.out_dim=${hidden_dim} \
-            ++architecture.gnn.mpnn_kwargs.in_dim=${hidden_dim} \
-            ++architecture.gnn.mpnn_kwargs.out_dim=${hidden_dim} \
-            ++architecture.gnn.mpnn_kwargs.in_dim_edges=${hidden_dim} \
-            ++architecture.gnn.mpnn_kwargs.out_dim_edges=${hidden_dim} \
-            ++architecture.task_heads.${task}.hidden_dims=${hidden_dim} \
-            ++architecture.task_heads.${task}.out_dim=${hidden_dim} 
+            ++architecture.pre_nn.hidden_dims=${hidden_dim} \
+            ++architecture.gnn.layer_kwargs.mpnn_kwargs.in_dim=${hidden_dim} \
+            ++architecture.gnn.layer_kwargs.mpnn_kwargs.out_dim=${hidden_dim} \
+            ++architecture.gnn.in_dim=${hidden_dim} \
+            ++architecture.gnn.hidden_dims=${hidden_dim} \
+            ++architecture.gnn.out_dim=${hidden_dim} \
+            ++architecture.task_heads.${task}.hidden_dims=256 \
+            ++architecture.task_heads.${task}.depth=4 \
+            ++trainer.model_checkpoint.save_last=False 
+    done
 done
 

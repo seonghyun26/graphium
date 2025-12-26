@@ -302,7 +302,7 @@ class MultitaskDataset(Dataset):
         ]
         path = os.path.join(self.data_path, "multitask_metadata.pkl")
         with fsspec.open(path, "rb") as f:
-            attrs = torch.load(path)
+            attrs = torch.load(path, weights_only=False)
 
         if not set(attrs_to_load).issubset(set(attrs.keys())):
             raise ValueError(
@@ -473,7 +473,7 @@ class MultitaskDataset(Dataset):
             self.data_path, format(data_idx // 1000, "04d"), format(data_idx, "07d") + ".pkl"
         )
         with fsspec.open(filename, "rb") as f:
-            data_dict = torch.load(f)
+            data_dict = torch.load(f, weights_only=False)
         return data_dict
 
     def merge(

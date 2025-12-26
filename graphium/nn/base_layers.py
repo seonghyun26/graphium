@@ -37,6 +37,7 @@ SUPPORTED_ACTIVATION_MAP = {
     "GELU",
     "LeakyReLU",
     "Softplus",
+    "SiLU",
     "None",
 }
 

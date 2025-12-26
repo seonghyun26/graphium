@@ -255,6 +255,7 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
         resume_ckpt_path = cfg["trainer"].get("resume_from_checkpoint", None)
 
         # Run the model training
+        # torch.autograd.set_detect_anomaly(True)
         with SafeRun(name="TRAINING", raise_error=cfg["constants"]["raise_train_error"], verbose=True):
             trainer.fit(model=predictor, datamodule=datamodule, ckpt_path=resume_ckpt_path)
 
@@ -288,7 +289,7 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
         if cfg["trainer"]["model_checkpoint"]["save_last"] is True:
             checkpoint_path = f"{cfg['trainer']['model_checkpoint']['dirpath']}/{cfg['trainer']['model_checkpoint']['filename']}-v1.ckpt"
             # Log the initial model checkpoint to wandb
-            wandb.save(checkpoint_path)
+            # wandb.save(checkpoint_path)
         wandb.finish()
 
     # Save test metrics - Base utility in case someone doesn't use a logger.

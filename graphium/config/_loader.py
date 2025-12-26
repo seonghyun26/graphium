@@ -456,7 +456,7 @@ def load_trainer(
 
     trainer_kwargs["callbacks"] = callbacks
     trainer = Trainer(
-        detect_anomaly=True,
+        detect_anomaly=config["constants"].get("detect_anomaly", False),
         strategy=strategy,
         accelerator=accelerator_type,
         devices=devices,
