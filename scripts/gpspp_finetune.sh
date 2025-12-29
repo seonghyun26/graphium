@@ -11,8 +11,8 @@ TASK_LIST=(
 )
 CKPT_LIST=(
     # ./model/largemix/gpspp/largemix_gpspp_500M.ckpt
-    ./model/toymix/gpspp/toymix_500M.ckpt
-    # ./model/toymix/gpspp/toymixrxrx3_500M.ckpt
+    # ./model/toymix/gpspp/toymix_500M.ckpt
+    ./model/toymix/gpspp/toymixrxrx3_500M.ckpt
 )
 
 for task in "${TASK_LIST[@]}"; do
@@ -23,27 +23,27 @@ for task in "${TASK_LIST[@]}"; do
             model=gpspp \
             accelerator=gpu \
             tasks=admet \
-            ++constants.task=$task \
-            ++finetuning.task=$task \
-            ++datamodule.args.tdc_benchmark_names=$task \
-            +finetuning=admet \
-            ++finetuning.pretrained_model=$ckpt \
-            ++finetuning.unfreeze_pretrained_depth=4 \
-            ++finetuning.epoch_unfreeze_all=20 \
-            ++finetuning.finetuning_head.in_dim=256 \
-            ++finetuning.finetuning_head.hidden_dims=256 \
-            ++finetuning.finetuning_head.depth=4 \
-            ++finetuning.new_out_dim=256 \
-            ++finetuning.added_depth=4 \
-            ++architecture.task_heads.${task}.hidden_dims=256 \
             ++constants.seed=0 \
             ++constants.wandb.entity=eddy26 \
             ++constants.wandb.save_dir=null \
             ++constants.wandb.project=graphium \
             ++constants.wandb.tags="['gpspp','finetune','largemix','unfree_pretrained']" \
             ++constants.raise_train_error=False \
-            ++trainer.model_checkpoint.save_last=False \
-            ++datamodule.args.num_workers=0 
+            ++constants.task=$task \
+            ++finetuning.task=$task \
+            ++datamodule.args.tdc_benchmark_names=$task \
+            ++datamodule.args.num_workers=0 \
+            +finetuning=admet \
+            ++finetuning.pretrained_model=$ckpt \
+            ++finetuning.unfreeze_pretrained_depth=4 \
+            ++finetuning.epoch_unfreeze_all=40 \
+            ++finetuning.finetuning_head.in_dim=256 \
+            ++finetuning.finetuning_head.hidden_dims=256 \
+            ++finetuning.new_out_dim=256 \
+            ++finetuning.finetuning_head.depth=4 \
+            ++finetuning.added_depth=4 \
+            ++architecture.task_heads.${task}.hidden_dims=256 \
+            ++trainer.model_checkpoint.save_last=False 
             
         sleep 1
     done

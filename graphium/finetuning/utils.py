@@ -106,7 +106,7 @@ def modify_cfg_for_finetuning(cfg: Dict[str, Any]):
         else cfg_arch[finetuning_module][sub_module_from_pretrained].get("out_dim")
     )
 
-    if new_module_kwargs["depth"] is None:
+    if "depth" not in new_module_kwargs or new_module_kwargs["depth"] is None:
         new_module_kwargs["depth"] = len(new_module_kwargs["hidden_dims"]) + 1
 
     upd_kwargs = {
