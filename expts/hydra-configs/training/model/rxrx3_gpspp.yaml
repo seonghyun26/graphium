@@ -1,0 +1,13 @@
+# @package _global_
+
+# GPS++ model with the RxRx3 cell-image embeddings dataset.
+constants:
+  name: rxrx3_gpspp_16layer
+  seed: 42
+  max_epochs: 100
+  raise_train_error: true
+  datacache_path: ../datacache/rxrx3/
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/rxrx3/gpspp/${now:%Y-%m-%d_%H-%M-%S}/
