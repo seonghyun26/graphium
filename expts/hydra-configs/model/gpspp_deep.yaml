@@ -1,0 +1,25 @@
+# @package _global_
+# Deep GPS++ configuration with 512 dimensions and increased depth
+# Extends gpspp.yaml with deeper architecture
+
+defaults:
+  - gpspp
+
+architecture:
+  gnn:
+    in_dim: 512
+    out_dim: 512
+    hidden_dims: 512
+    depth: 32  # Increased depth for deeper model
+    layer_kwargs:
+      mpnn_kwargs:
+        in_dim: 512
+        out_dim: 512
+
+  pre_nn:
+    out_dim: 512
+    hidden_dims: 512
+
+  graph_output_nn:
+    graph:
+      hidden_dims: 512

@@ -1,0 +1,14 @@
+# @package _global_
+
+# Pairformer model with the ToyMix dataset.
+constants:
+  name: toymix_pairformer_4layer
+  seed: 42
+  max_epochs: 100
+  data_dir: expts/data/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: ../datacache/neurips2023-small/
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/small-dataset/pairformer/${now:%Y-%m-%d_%H-%M-%S}/
