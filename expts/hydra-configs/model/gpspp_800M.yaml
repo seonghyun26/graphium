@@ -1,0 +1,37 @@
+# @package _global_
+# GPS++ 800M configuration: 1536 hidden dim, 12 layers (~833M parameters)
+# Designed for single-GPU training on 96GB GPUs (RTX PRO 6000 Blackwell)
+
+defaults:
+  - gpspp
+
+# Keep working directory at project root so relative data paths resolve correctly
+hydra:
+  run:
+    dir: .
+
+constants:
+  norm: layer_norm
+
+datamodule:
+  args:
+    batch_size_training: 192
+
+architecture:
+  gnn:
+    in_dim: 1536
+    out_dim: 1536
+    hidden_dims: 1536
+    depth: 12
+    layer_kwargs:
+      mpnn_kwargs:
+        in_dim: 1536
+        out_dim: 1536
+
+  pre_nn:
+    out_dim: 1536
+    hidden_dims: 1536
+
+  graph_output_nn:
+    graph:
+      hidden_dims: 1536
