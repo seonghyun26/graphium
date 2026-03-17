@@ -1,10 +1,3 @@
-<div align="center">
-    <img src="docs/images/banner-tight.png" height="200px">
-    <h3>Multi-modal molecular representation learning with GNNs</h3>
-</div>
-
----
-
 [![PyPI](https://img.shields.io/pypi/v/graphium)](https://pypi.org/project/graphium/)
 [![Conda](https://img.shields.io/conda/v/conda-forge/graphium?label=conda&color=success)](https://anaconda.org/conda-forge/graphium)
 [![license](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/datamol-io/graphium/blob/main/LICENSE)

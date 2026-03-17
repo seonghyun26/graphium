@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
+
 from typing import List, Literal, Union
 import csv
 import os

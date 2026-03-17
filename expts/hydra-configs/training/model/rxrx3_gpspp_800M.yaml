@@ -1,0 +1,17 @@
+# @package _global_
+
+# GPS++ 800M with the RxRx3 cell morphology dataset.
+constants:
+  name: rxrx3_gpspp_800M
+  seed: 42
+  max_epochs: 100
+  raise_train_error: true
+  datacache_path: ./datacache/rxrx3/
+
+datamodule:
+  args:
+    batch_size_training: 192
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/rxrx3/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/
