@@ -54,6 +54,7 @@ PYG_LAYERS_DICT = {
     "pyg:gps": PygLayers.GPSLayerPyg,
     "pyg:dimenet": PygLayers.DimeNetPyg,
     "pyg:mpnnplus": PygLayers.MPNNPlusPyg,
+    "pyg:pairformer": PygLayers.PairformerLayerPyg,
 }
 
 LAYERS_DICT = deepcopy(FC_LAYERS_DICT)

@@ -2,7 +2,8 @@ cd ../
 
 
 TASK_LIST=(
-    'caco2_wang' 'hia_hou' 'pgp_broccatelli' 'bioavailability_ma' 'lipophilicity_astrazeneca' 'solubility_aqsoldb' 
+    # 'caco2_wang' 'hia_hou' 'pgp_broccatelli' 'bioavailability_ma' 'lipophilicity_astrazeneca'
+    'solubility_aqsoldb' 
     'bbb_martins' 'ppbr_az' 'vdss_lombardo' 
     'cyp2d6_veith' 'cyp3a4_veith' 'cyp2c9_veith' 'cyp2c9_substrate_carbonmangels' 'cyp2d6_substrate_carbonmangels' 'cyp3a4_substrate_carbonmangels' 
     'half_life_obach' 'clearance_hepatocyte_az' 'clearance_microsome_az' 
@@ -40,7 +41,8 @@ for hidden_dim in "${HIDDEN_DIM_LIST[@]}"; do
             ++architecture.gnn.out_dim=${hidden_dim} \
             ++architecture.task_heads.${task}.hidden_dims=256 \
             ++architecture.task_heads.${task}.depth=4 \
-            ++trainer.model_checkpoint.save_last=False 
+            ++trainer.model_checkpoint.save_last=False  \
+            ++datamodule.args.batch_size_training=200
     done
 done
 

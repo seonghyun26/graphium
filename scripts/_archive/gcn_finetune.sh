@@ -1,7 +1,5 @@
 cd ../
 
-DEVICE=${1:-'0'}
-
 TASK_LIST=(
     'caco2_wang' 'hia_hou' 'pgp_broccatelli' 'bioavailability_ma' 'lipophilicity_astrazeneca' 'solubility_aqsoldb' 
     'bbb_martins' 'ppbr_az' 'vdss_lombardo' 
@@ -10,41 +8,42 @@ TASK_LIST=(
     'ld50_zhu' 'herg' 'ames' 'dili' 
 )
 CKPT_LIST=(
-    # ./model/largemix/gpspp/largemix_gpspp_500M.ckpt
-    ./model/toymix/gpspp/toymix_500M.ckpt
-    # ./model/toymix/gpspp/toymixrxrx3_500M.ckpt
+    # ./model/toymix/gcn/toymix_500M.ckpt
+    ./model/largemix/gcn/largemix_gcn.ckpt
+    ./model/largemix+rxrx3/largemixrxrx3_gcn.ckpt
 )
+HID_DIM=256
 
 for task in "${TASK_LIST[@]}"; do
     for ckpt in "${CKPT_LIST[@]}"; do
         echo $task with $ckpt
 
         CUDA_VISIBLE_DEVICES=$1 graphium-train \
-            model=gpspp \
+            model=gcn \
             accelerator=gpu \
             tasks=admet \
-            ++constants.task=$task \
-            ++finetuning.task=$task \
-            ++datamodule.args.tdc_benchmark_names=$task \
-            +finetuning=admet \
-            ++finetuning.pretrained_model=$ckpt \
-            ++finetuning.unfreeze_pretrained_depth=4 \
-            ++finetuning.epoch_unfreeze_all=20 \
-            ++finetuning.finetuning_head.in_dim=256 \
-            ++finetuning.finetuning_head.hidden_dims=256 \
-            ++finetuning.finetuning_head.depth=4 \
-            ++finetuning.new_out_dim=256 \
-            ++finetuning.added_depth=4 \
-            ++architecture.task_heads.${task}.hidden_dims=256 \
             ++constants.seed=0 \
             ++constants.wandb.entity=eddy26 \
             ++constants.wandb.save_dir=null \
             ++constants.wandb.project=graphium \
-            ++constants.wandb.tags="['gpspp','finetune','largemix','unfree_pretrained']" \
+            ++constants.wandb.tags="['gcn','finetune','unfree_pretrained','toymix','rxrx3']" \
             ++constants.raise_train_error=False \
+            ++constants.task=$task \
+            ++finetuning.task=$task \
+            ++datamodule.args.tdc_benchmark_names=$task \
+            ++datamodule.args.num_workers=0 \
+            +finetuning=admet_largemix \
+            ++finetuning.pretrained_model=$ckpt \
+            ++finetuning.unfreeze_pretrained_depth=16 \
+            ++finetuning.epoch_unfreeze_all=40 \
+            ++finetuning.finetuning_head.in_dim=${HID_DIM} \
+            ++finetuning.finetuning_head.hidden_dims=${HID_DIM} \
+            ++finetuning.new_out_dim=${HID_DIM} \
+            ++finetuning.finetuning_head.depth=4 \
+            ++finetuning.added_depth=4 \
+            ++architecture.task_heads.${task}.hidden_dims=${HID_DIM} \
             ++trainer.model_checkpoint.save_last=False \
-            ++datamodule.args.num_workers=0 
-            
+            ++constants.datacache_path=../datacache/admet
         sleep 1
     done
 done

@@ -1,130 +1,282 @@
 <div align="center">
     <img src="docs/images/banner-tight.png" height="200px">
-    <h3>Scaling molecular GNNs to infinity</h3>
+    <h3>Multi-modal molecular representation learning with GNNs</h3>
 </div>
 
 ---
 
 [![PyPI](https://img.shields.io/pypi/v/graphium)](https://pypi.org/project/graphium/)
 [![Conda](https://img.shields.io/conda/v/conda-forge/graphium?label=conda&color=success)](https://anaconda.org/conda-forge/graphium)
-[![PyPI - Downloads](https://img.shields.io/pypi/dm/graphium)](https://pypi.org/project/graphium/)
-[![Conda](https://img.shields.io/conda/dn/conda-forge/graphium)](https://anaconda.org/conda-forge/graphium)
 [![license](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/datamol-io/graphium/blob/main/LICENSE)
-[![GitHub Repo stars](https://img.shields.io/github/stars/datamol-io/graphium)](https://github.com/datamol-io/graphium/stargazers)
-[![GitHub Repo stars](https://img.shields.io/github/forks/datamol-io/graphium)](https://github.com/datamol-io/graphium/network/members)
-[![test](https://github.com/datamol-io/graphium/actions/workflows/test.yml/badge.svg)](https://github.com/datamol-io/graphium/actions/workflows/test.yml)
-[![test-ipu](https://github.com/datamol-io/graphium/actions/workflows/test_ipu.yml/badge.svg)](https://github.com/datamol-io/graphium/actions/workflows/test_ipu.yml)
-[![release](https://github.com/datamol-io/graphium/actions/workflows/release.yml/badge.svg)](https://github.com/datamol-io/graphium/actions/workflows/release.yml)
-[![code-check](https://github.com/datamol-io/graphium/actions/workflows/code-check.yml/badge.svg)](https://github.com/datamol-io/graphium/actions/workflows/code-check.yml)
-[![doc](https://github.com/datamol-io/graphium/actions/workflows/doc.yml/badge.svg)](https://github.com/datamol-io/graphium/actions/workflows/doc.yml)
-[![codecov](https://codecov.io/gh/datamol-io/graphium/branch/main/graph/badge.svg?token=bHOkKY5Fze)](https://codecov.io/gh/datamol-io/graphium)
 [![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
 
-A deep learning library focused on graph representation learning for real-world chemical tasks.
+A deep learning framework for molecular graph representation learning.
+Built on [Graphium](https://github.com/datamol-io/graphium), this fork extends the platform with **multi-modal pre-training** (molecular properties + cell morphology) and a systematic **ablation study** on pre-training dataset type and size.
 
-- ✅ State-of-the-art GNN architectures.
-- 🐍 Extensible API: build your own GNN model and train it with ease.
-- ⚗️ Rich featurization: powerful and flexible built-in molecular featurization.
-- 🧠 Pretrained models: for fast and easy inference or transfer learning.
-- ⮔ Read-to-use training loop based on [Pytorch Lightning](https://www.pytorchlightning.ai/).
-- 🔌 Have a new dataset? Graphium provides a simple plug-and-play interface. Change the path, the name of the columns to predict, the atomic featurization, and you’re ready to play!
+## Key capabilities
 
-## Documentation
+- **Multi-modal pre-training** across molecular (LargeMix) and biological (RxRx3 cell morphology) domains
+- **4 GNN architectures**: GCN, MPNN, GPS++, Pairformer
+- **4 pre-training datasets** spanning quantum, bioassay, gene expression, and cell imaging data
+- **22-task ADMET benchmark** for downstream evaluation via TDC
+- **Dataset ablation scripts** for studying the effect of pre-training data type and size on transfer learning
 
-Visit https://graphium-docs.datamol.io/.
+## Datasets
 
-## Installation for developers
+### Pre-training datasets
 
-### For CPU and GPU developers
+| Dataset | Tasks | Labels | Domain |
+|---------|-------|--------|--------|
+| **ToyMix** | QM9 (19), Tox21 (12), ZINC (3) | ~34 | Quantum mechanics, toxicity, molecular properties |
+| **LargeMix** | L1000-VCAP (2934), L1000-MCF7 (2934), PCBA (1328), PCQM4M-G25 (25), PCQM4M-N4 (4) | ~7225 | Gene expression, bioassay screening, quantum properties |
+| **RxRx3** | Cell morphology embeddings (384) | 384 | Cell imaging phenotypes from compound perturbations |
+| **LargeMix+RxRx3** | All of the above combined | ~7609 | Multi-modal: molecular + biological |
 
-Use [`mamba`](https://github.com/mamba-org/mamba), a faster and better alternative to `conda`.
+### Downstream benchmark
 
-If you are using a GPU, we recommend enforcing the CUDA version that you need with `CONDA_OVERRIDE_CUDA=XX.X`.
+**ADMET** (22 tasks from TDC): absorption (9), metabolism (6), excretion (3), toxicity (4). Each task is evaluated independently after fine-tuning from a pre-trained checkpoint.
+
+## Model architectures
+
+| Model | Type | Key feature |
+|-------|------|-------------|
+| **GCN** | Message passing | Simple, scalable baseline |
+| **MPNN** | Message passing | Explicit edge embeddings |
+| **GPS++** | Graph transformer | MPNN + full self-attention + positional encodings |
+| **Pairformer** | Dual-track transformer | Separate node and pairwise interaction tracks (adapted from [Boltz](https://github.com/jwohlwend/boltz)) |
+
+## Installation
 
 ```bash
-# Install Graphium's dependencies in a new environment named `graphium`
+# Create environment
 mamba env create -f env.yml -n graphium
 
-# To force the CUDA version to 11.2, or any other version you prefer, use the following command:
-# CONDA_OVERRIDE_CUDA=11.2 mamba env create -f env.yml -n graphium
+# For a specific CUDA version:
+# CONDA_OVERRIDE_CUDA=11.8 mamba env create -f env.yml -n graphium
 
-# Install Graphium in dev mode
+# Install in dev mode
 mamba activate graphium
 pip install --no-deps -e .
 ```
 
-### For IPU developers
+## Scripts
+
+All experiment scripts live in `scripts/` and share configuration via `common.sh`.
+
+| Script | Purpose |
+|--------|---------|
+| `common.sh` | Shared configuration (W&B, task lists, dimension helpers) |
+| `00_pretrain.sh` | Pre-train any model on any dataset |
+| `01_finetune_admet.sh` | Fine-tune a checkpoint on all 22 ADMET tasks |
+| `02_scratch_admet.sh` | Train from scratch on ADMET (no pre-training baseline) |
+| `03_ablation_dataset_type.sh` | Ablation study: pre-training dataset type |
+| `04_ablation_dataset_size.sh` | Ablation study: pre-training dataset size |
+| `05_ablation_full_matrix.sh` | Full ablation matrix (type x size) |
+| `06_debug.sh` | Quick sanity check (3 epochs, 10 batches) |
+
+Old scripts are preserved in `scripts/_archive/`.
+
+### Quick start
+
 ```bash
-# Install Graphcore's SDK and Graphium dependencies in a new environment called `.graphium_ipu`
-./install_ipu.sh .graphium_ipu
+# Pre-train GPS++ on LargeMix
+bash scripts/00_pretrain.sh gpspp largemix 0
+
+# Pre-train GCN on the combined multi-modal dataset
+bash scripts/00_pretrain.sh gcn largemix_rxrx3 0
+
+# Fine-tune on ADMET from a checkpoint
+bash scripts/01_finetune_admet.sh gpspp ./checkpoints/last.ckpt 0
+
+# Train from scratch (baseline)
+bash scripts/02_scratch_admet.sh gpspp 0
+
+# Debug run (tiny model, 3 epochs)
+bash scripts/06_debug.sh gpspp toymix 0
 ```
 
-The above step needs to be done once. After that, enable the SDK and the environment as follows:
+### Environment variable overrides
+
+All scripts accept environment variables for customization:
 
 ```bash
-source enable_ipu.sh .graphium_ipu
+# Custom dimensions and depth
+DIM=1024 GNN_DEPTH=16 bash scripts/00_pretrain.sh gpspp largemix 0
+
+# Fine-tuning keeps the backbone FROZEN by default (only trains the head).
+# To unfreeze layers, explicitly set:
+UNFREEZE_DEPTH=4 EPOCH_UNFREEZE_ALL=40 bash scripts/01_finetune_admet.sh gcn ./ckpt.ckpt 0
+
+# Subsample pre-training data (for size ablation)
+SAMPLE_SIZE=0.1 bash scripts/00_pretrain.sh gpspp largemix 0
 ```
 
-## Training a model
+## Ablation study
 
-To learn how to train a model, we invite you to look at the documentation, or the jupyter notebooks available [here](https://github.com/datamol-io/graphium/tree/master/docs/tutorials/model_training).
+The ablation study isolates the effect of pre-training data on downstream ADMET performance.
 
-If you are not familiar with [PyTorch](https://pytorch.org/docs) or [PyTorch-Lightning](https://pytorch-lightning.readthedocs.io/en/latest/), we highly recommend going through their tutorial first.
+### Dataset type ablation
 
-## Running an experiment
-We have setup Graphium with `hydra` for managing config files. To run an experiment go to the `expts/` folder. For example, to benchmark a GCN on the ToyMix dataset run
+Fixes model architecture, size, and finetuning protocol. Varies only the pre-training dataset.
+
 ```bash
-graphium-train architecture=toymix tasks=toymix training=toymix model=gcn
+# Run with GPS++ (default)
+bash scripts/03_ablation_dataset_type.sh 0
+
+# Run with GCN
+MODEL=gcn DIM=5120 bash scripts/03_ablation_dataset_type.sh 0
 ```
-To change parameters specific to this experiment like switching from `fp16` to `fp32` precision, you can either override them directly in the CLI via
+
+**Conditions**: scratch (no pre-training), ToyMix, LargeMix, RxRx3, LargeMix+RxRx3
+
+### Dataset size ablation
+
+Fixes everything including dataset type. Varies the fraction of pre-training data.
+
 ```bash
-graphium-train architecture=toymix tasks=toymix training=toymix model=gcn trainer.trainer.precision=32
+# Default: subsample LargeMix at {1%, 5%, 10%, 25%, 50%, 100%}
+bash scripts/04_ablation_dataset_size.sh 0
+
+# Custom fractions on RxRx3
+DATASET=rxrx3 FRACTIONS="0.1 0.5 1.0" bash scripts/04_ablation_dataset_size.sh 0
 ```
-or change them permanently in the dedicated experiment config under `expts/hydra-configs/toymix_gcn.yaml`.
-Integrating `hydra` also allows you to quickly switch between accelerators. E.g., running
+
+### Full matrix
+
+Crosses dataset type with dataset size for a complete picture.
+
 ```bash
-graphium-train architecture=toymix tasks=toymix training=toymix model=gcn accelerator=gpu
+bash scripts/05_ablation_full_matrix.sh 0
 ```
-automatically selects the correct configs to run the experiment on GPU.
-Finally, you can also run a fine-tuning loop:
+
+Produces: 4 dataset types x 4 fractions + 1 scratch baseline = 17 pre-training conditions, each fine-tuned on all 22 ADMET tasks.
+
+### W&B tracking
+
+All ablation runs are tagged for filtering:
+
+- `ablation` + `dataset_type` for type ablation
+- `ablation` + `dataset_size` + `frac_X.XX` for size ablation
+- `ablation` + `full_matrix` for the combined study
+
+## Pipeline
+
+```
+Pre-training dataset                 Downstream evaluation
+(ToyMix / LargeMix / RxRx3 / ...)   (22 ADMET tasks)
+        |                                    ^
+        v                                    |
+  [00_pretrain.sh]                  [01_finetune_admet.sh]
+  Multi-task GNN training    --->   Frozen backbone + task head
+  on shared backbone                (only head is trained by default)
+        |                                    |
+        v                                    v
+                    results/experiment_results.csv
+                    (centralized metrics, auto-appended per run)
+                                             |
+                                             v
+                    notebooks/07_results_dashboard.ipynb
+                    (visualization: heatmaps, scaling curves, bar charts)
+```
+
+Fine-tuning keeps the pre-trained backbone **frozen by default** — only the task head is trained. This isolates the quality of the learned representations from the fine-tuning dynamics.
+
+For the ablation study, this pipeline is run for each (dataset type, dataset size) combination, plus a scratch baseline that skips pre-training entirely.
+
+## Results
+
+Every `graphium-train` run automatically appends a row to `results/experiment_results.csv` with:
+- Run metadata: model, task, seed, checkpoint path, finetuning config
+- All test metrics from the run
+
+Open `notebooks/07_results_dashboard.ipynb` to visualize:
+- Per-task metrics table across pre-training datasets
+- Dataset type heatmap (task x dataset)
+- Dataset size scaling curves
+- Aggregate normalized performance bar charts
+
+## Hydra configuration
+
+Experiments are configured with [Hydra](https://hydra.cc/). Config files are in `expts/hydra-configs/`:
+
+```
+hydra-configs/
+  model/          gcn, mpnn, gpspp, gpspp_deep, pairformer, ...
+  tasks/          toymix, largemix, rxrx3, largemix_rxrx3, admet, ...
+  training/       toymix, largemix, rxrx3 (LR, warmup, scheduler)
+  architecture/   toymix, largemix (pre-NN, PE encoders, graph output)
+  finetuning/     admet, admet_largemix, admet_gpspp
+```
+
+Any parameter can be overridden from the command line:
+
 ```bash
-graphium-train +finetuning=admet
+graphium-train model=gpspp tasks=largemix training=largemix architecture=largemix \
+    ++architecture.gnn.depth=16 \
+    ++datamodule.args.batch_size_training=256
 ```
 
-To use a config file you built from scratch you can run
+## Data preparation
+
+Featurization (SMILES to PyG graphs) runs automatically on first training. For large datasets, prepare and cache in advance:
+
 ```bash
-graphium-train --config-path [PATH] --config-name [CONFIG]
-```
-Thanks to the modular nature of `hydra` you can reuse many of our config settings for your own experiments with Graphium.
+# Cache the featurized graphs
+graphium data prepare ++datamodule.args.processed_graph_data_path=./datacache/largemix
 
-## Preparing the data in advance
-The data preparation including the featurization (e.g., of molecules from smiles to pyg-compatible format) is embedded in the pipeline and will be performed when executing `graphium-train [...]`.
-
-However, when working with larger datasets, it is recommended to perform data preparation in advance using a machine with sufficient allocated memory (e.g., ~400GB in the case of `LargeMix`). Preparing data in advance is also beneficial when running lots of concurrent jobs with identical molecular featurization, so that resources aren't wasted and processes don't conflict reading/writing in the same directory.
-
-The following command-line will prepare the data and cache it, then use it to train a model.
-```bash
-# First prepare the data and cache it in `path_to_cached_data`
-graphium data prepare ++datamodule.args.processed_graph_data_path=[path_to_cached_data]
-
-# Then train the model on the prepared data
-graphium-train [...] datamodule.args.processed_graph_data_path=[path_to_cached_data]
+# Train using the cache
+graphium-train [...] datamodule.args.processed_graph_data_path=./datacache/largemix
 ```
 
-**Note** that `datamodule.args.processed_graph_data_path` can also be specified at `expts/hydra_configs/`.
+## Notebooks
 
-**Note** that, every time the configs of `datamodule.args.featurization` changes, you will need to run a new data preparation, which will automatically be saved in a separate directory that uses a hash unique to the configs.
+| Notebook | Purpose |
+|----------|---------|
+| `01_dataset_overview` | Explore pre-training and downstream datasets |
+| `02_data_visualization` | Distribution plots for ADMET tasks |
+| `03_model_inference` | Load a model from config and run inference |
+| `04_fingerprints` | Extract molecular fingerprints from pre-trained models |
+| `05_finetuning_admet` | Step-by-step ADMET fine-tuning tutorial |
+| `06_compare_pretrain_finetune` | Compare pre-training loss vs fine-tuning quality |
+| `07_results_dashboard` | **Main visualization**: reads from `results/` and plots ablation results |
+| `fig/01_scaling` | Publication-quality scaling curves |
+| `fig/02_ablation_activation` | Activation function ablation figures |
+| `fig/03_precision` | Precision (fp16 vs fp32) analysis |
+
+Dev/scratch notebooks are in `notebooks/_archive/`.
+
+## Project structure
+
+```
+graphium/
+  data/
+    rxrx3/                    RxRx3 cell morphology embeddings
+    dti/                      Drug-target interaction data
+  expts/
+    hydra-configs/            Hydra YAML configurations
+  graphium/                   Core library (models, data, training)
+  notebooks/
+    01-07_*.ipynb             Analysis and visualization notebooks
+    07_results_dashboard.ipynb  <-- main results visualization
+    fig/                      Publication figure notebooks
+    _archive/                 Dev/scratch notebooks
+  results/
+    experiment_results.csv    Centralized metrics (auto-populated)
+  scripts/
+    common.sh                 Shared config
+    00_pretrain.sh             Pre-training
+    01_finetune_admet.sh       ADMET fine-tuning (frozen backbone)
+    02_scratch_admet.sh        Scratch baseline
+    03-05_ablation_*.sh        Ablation study scripts
+    06_debug.sh               Quick sanity check
+    _archive/                 Original scripts (preserved)
+  datacache/                  Cached featurized graphs
+```
 
 ## License
 
-Under the Apache-2.0 license. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE).
 
-## Documentation
+## Acknowledgments
 
-- Diagram for data processing in Graphium.
-
-<img src="docs/images/datamodule.png" alt="Data Processing Chart" width="60%" height="60%">
-
-- Diagram for Muti-task network in Graphium
-
-<img src="docs/images/full_graph_network.png" alt="Full Graph Multi-task Network" width="80%" height="80%">
+Built on [Graphium](https://github.com/datamol-io/graphium) by Valence Labs. Pairformer architecture adapted from [Boltz](https://github.com/jwohlwend/boltz). RxRx3 cell morphology data from [Recursion](https://www.rxrx.ai/).

@@ -1,8 +1,10 @@
 from typing import List, Literal, Union
+import csv
 import os
 import time
 import timeit
 from datetime import datetime
+from pathlib import Path
 
 import fsspec
 import hydra
@@ -43,6 +45,86 @@ from graphium.utils.safe_run import SafeRun
 import graphium.cli.finetune_utils
 
 TESTING_ONLY_CONFIG_KEY = "testing_only"
+
+
+def _save_results_csv(results: dict, cfg: dict, output_dir: str) -> None:
+    """Append a single row of results to a centralized CSV in the results/ directory.
+
+    The CSV is designed to be easily loaded by pandas for visualization in notebooks.
+    Each row = one training run. Columns = metadata + all metrics.
+    """
+    results_dir = cfg.get("constants", {}).get("results_csv_dir", None)
+    if results_dir is None:
+        # Default: results/ directory next to the graphium package root
+        results_dir = os.path.join(os.getcwd(), "results")
+
+    Path(results_dir).mkdir(parents=True, exist_ok=True)
+    csv_path = os.path.join(results_dir, "experiment_results.csv")
+
+    # Collect metadata from config
+    finetuning_cfg = cfg.get("finetuning", {})
+    constants = cfg.get("constants", {})
+    is_finetuning = "finetuning" in cfg
+
+    row = {
+        "timestamp": datetime.now().isoformat(),
+        "model": cfg.get("architecture", {}).get("gnn", {}).get("layer_type", "unknown"),
+        "task": constants.get("task", "multitask"),
+        "seed": constants.get("seed", 0),
+        "pretrain_dataset": finetuning_cfg.get("pretrained_model", "scratch") if is_finetuning else "scratch",
+        "is_finetuning": is_finetuning,
+        "unfreeze_depth": finetuning_cfg.get("training_kwargs", {}).get("unfreeze_pretrained_depth", "N/A") if is_finetuning else "N/A",
+        "epoch_unfreeze_all": finetuning_cfg.get("training_kwargs", {}).get("epoch_unfreeze_all", "N/A") if is_finetuning else "N/A",
+        "hidden_dim": cfg.get("architecture", {}).get("gnn", {}).get("hidden_dims", "unknown"),
+        "gnn_depth": cfg.get("architecture", {}).get("gnn", {}).get("depth", "unknown"),
+        "output_dir": output_dir,
+    }
+
+    # Add W&B tags if present
+    wandb_tags = constants.get("wandb", {})
+    if isinstance(wandb_tags, dict):
+        row["wandb_tags"] = str(wandb_tags.get("tags", ""))
+
+    # Flatten all metrics into columns
+    for key, value in sorted(results.items()):
+        row[key] = value
+
+    # Write header if file doesn't exist; expand columns if needed; then append
+    file_exists = os.path.isfile(csv_path)
+    all_fieldnames = sorted(row.keys())
+
+    if file_exists:
+        with open(csv_path, "r", newline="") as rf:
+            reader = csv.DictReader(rf)
+            existing_cols = set(reader.fieldnames or [])
+        new_cols = set(row.keys()) - existing_cols
+        if new_cols:
+            all_fieldnames = sorted(existing_cols | set(row.keys()))
+            _rewrite_csv_header(csv_path, all_fieldnames)
+
+    with open(csv_path, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=all_fieldnames, extrasaction="ignore")
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(row)
+
+    logger.info(f"Results appended to {csv_path}")
+
+
+def _rewrite_csv_header(csv_path: str, all_columns) -> None:
+    """Rewrite the CSV file with an expanded header when new metric columns appear."""
+    import shutil
+
+    if isinstance(all_columns, set):
+        all_columns = sorted(all_columns)
+    tmp_path = csv_path + ".tmp"
+    with open(csv_path, "r", newline="") as fin, open(tmp_path, "w", newline="") as fout:
+        reader = csv.DictReader(fin)
+        writer = csv.DictWriter(fout, fieldnames=all_columns, extrasaction="ignore")
+        writer.writeheader()
+        for existing_row in reader:
+            writer.writerow(existing_row)
+    shutil.move(tmp_path, csv_path)
 
 
 @hydra.main(version_base=None, config_path="../../expts/hydra-configs", config_name="main")
@@ -297,6 +379,12 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
     results = {k: v.item() if torch.is_tensor(v) else v for k, v in results.items()}
     with fsspec.open(fs.join(output_dir, "test_results.yaml"), "w") as f:
         yaml.dump(results, f)
+
+    # Save results to centralized CSV for easy notebook visualization
+    try:
+        _save_results_csv(results, cfg, output_dir)
+    except Exception as e:
+        logger.warning(f"Failed to save results CSV: {e}")
 
     # When part of of a hyper-parameter search, we are very specific about how we save our results
     # NOTE (cwognum): We also check if the we are in multi-run mode, as the sweeper is otherwise not active.
