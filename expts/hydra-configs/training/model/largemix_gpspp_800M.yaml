@@ -7,7 +7,7 @@ constants:
   max_epochs: 100
   data_dir: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset
   raise_train_error: true
-  datacache_path: ./datacache/neurips2023-large/
+  datacache_path: /home/shpark/prj-molrepr/datacache/neurips2023-large/
 
 datamodule:
   args:
