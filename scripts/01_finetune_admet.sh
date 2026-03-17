@@ -11,14 +11,14 @@
 #
 # Environment variables (optional):
 #   FINETUNE_DIM         : hidden dim for finetuning head (default: 256)
-#   UNFREEZE_DEPTH       : layers to unfreeze initially (default: 4)
-#   EPOCH_UNFREEZE_ALL   : epoch to unfreeze all layers (default: 40)
+#   UNFREEZE_DEPTH       : layers to unfreeze initially (default: 0, frozen backbone)
+#   EPOCH_UNFREEZE_ALL   : epoch to unfreeze all layers (default: none, stay frozen)
 #   FINETUNING_CONFIG    : hydra finetuning config (default: admet)
 #   SUB_MODULE           : sub_module_from_pretrained (default: auto-detect)
 #
 # Examples:
 #   bash scripts/01_finetune_admet.sh gpspp ./checkpoints/gpspp_largemix.ckpt 0
-#   UNFREEZE_DEPTH=16 bash scripts/01_finetune_admet.sh gcn ./checkpoints/gcn_largemix.ckpt 1
+#   UNFREEZE_DEPTH=4 EPOCH_UNFREEZE_ALL=40 bash scripts/01_finetune_admet.sh gcn ./ckpt.ckpt 1
 
 source "$(dirname "$0")/common.sh"
 
@@ -27,8 +27,8 @@ CKPT=${2:?   "Usage: $0 <model> <checkpoint> [gpu_id]"}
 DEVICE=${3:-${DEVICE}}
 
 FINETUNE_DIM=${FINETUNE_DIM:-256}
-UNFREEZE_DEPTH=${UNFREEZE_DEPTH:-4}
-EPOCH_UNFREEZE_ALL=${EPOCH_UNFREEZE_ALL:-40}
+UNFREEZE_DEPTH=${UNFREEZE_DEPTH:-0}
+EPOCH_UNFREEZE_ALL=${EPOCH_UNFREEZE_ALL:-none}
 FINETUNING_CONFIG=${FINETUNING_CONFIG:-admet}
 ADDED_DEPTH=${ADDED_DEPTH:-4}
 

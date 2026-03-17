@@ -46,8 +46,8 @@ CKPT_DIR=${CKPT_DIR:-./ablation_checkpoints}
 DATASETS=(toymix largemix rxrx3 largemix_rxrx3)
 
 FINETUNE_DIM=256
-UNFREEZE_DEPTH=4
-EPOCH_UNFREEZE_ALL=40
+UNFREEZE_DEPTH=0
+EPOCH_UNFREEZE_ALL=none
 FINETUNING_CONFIG=admet
 
 echo "============================================================"

@@ -9,6 +9,9 @@ cd "$(dirname "$0")/.."
 DEVICE=${DEVICE:-0}
 SEED=${SEED:-0}
 
+# ── Results directory (centralized CSV for notebook visualization) ────────────
+RESULTS_DIR=${RESULTS_DIR:-$(cd "$(dirname "$0")/.."; pwd)/results}
+
 # ── W&B ──────────────────────────────────────────────────────────────────────
 WANDB_ENTITY=${WANDB_ENTITY:-eddy26}
 WANDB_PROJECT=${WANDB_PROJECT:-graphium}
@@ -35,6 +38,7 @@ wandb_flags() {
     echo "++constants.wandb.save_dir=null"
     echo "++constants.wandb.project=${WANDB_PROJECT}"
     echo "++constants.wandb.tags=${tags}"
+    echo "++constants.results_csv_dir=${RESULTS_DIR}"
 }
 
 # ── Helper: set architecture dims for GCN-family models ──────────────────────

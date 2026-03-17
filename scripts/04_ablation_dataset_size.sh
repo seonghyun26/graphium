@@ -52,8 +52,8 @@ FRACTIONS_STR=${FRACTIONS:-"0.01 0.05 0.1 0.25 0.5 1.0"}
 read -ra FRACTIONS <<< "${FRACTIONS_STR}"
 
 FINETUNE_DIM=256
-UNFREEZE_DEPTH=4
-EPOCH_UNFREEZE_ALL=40
+UNFREEZE_DEPTH=0
+EPOCH_UNFREEZE_ALL=none
 FINETUNING_CONFIG=admet
 
 echo "============================================================"
