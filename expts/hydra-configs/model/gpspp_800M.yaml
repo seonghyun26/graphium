@@ -5,10 +5,10 @@
 defaults:
   - gpspp
 
-# Keep working directory at project root so relative data paths resolve correctly
+# Per-run output directory (prevents overwriting); data paths use absolute paths
 hydra:
   run:
-    dir: .
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
 
 constants:
   norm: layer_norm

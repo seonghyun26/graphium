@@ -14,4 +14,4 @@ datamodule:
 
 trainer:
   model_checkpoint:
-    dirpath: models_checkpoints/rxrx3/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/rxrx3/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/
