@@ -31,7 +31,7 @@ constants:
   # See also https://tdcommons.ai/benchmark/admet_group/overview/
   task: lipophilicity_astrazeneca
 
-  name: finetuning_${constants.task}_gcn
+  name: finetuning_${constants.task}_toymix
   wandb:
     name: ${constants.name}
     project: ${constants.task}

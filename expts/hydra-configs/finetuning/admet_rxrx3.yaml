@@ -1,0 +1,47 @@
+# @package _global_
+#
+# ADMET fine-tuning from an RxRx3-pretrained model.
+# Identical to admet.yaml except sub_module_from_pretrained = rxrx3.
+
+defaults:
+  - override /tasks/loss_metrics_datamodule: admet
+
+constants:
+  task: lipophilicity_astrazeneca
+  name: finetuning_${constants.task}_rxrx3
+  wandb:
+    name: ${constants.name}
+    project: ${constants.task}
+    entity: multitask-gnn
+    save_dir: logs/${constants.task}
+  seed: 42
+  max_epochs: 100
+  data_dir: expts/data/admet/${constants.task}
+  raise_train_error: true
+
+predictor:
+  optim_kwargs:
+    lr: 4.e-5
+
+finetuning:
+  task: ${constants.task}
+  level: graph
+  pretrained_model: dummy-pretrained-model
+  finetuning_module: task_heads
+  sub_module_from_pretrained: rxrx3
+  new_sub_module: ${constants.task}
+  drop_depth: 1
+  new_out_dim: 8
+  added_depth: 2
+  unfreeze_pretrained_depth: 0
+  epoch_unfreeze_all: none
+  finetuning_head:
+    task: ${constants.task}
+    previous_module: task_heads
+    incoming_level: graph
+    model_type: mlp
+    in_dim: 8
+    out_dim: 1
+    hidden_dims: 8
+    depth: 2
+    last_layer_is_readout: true

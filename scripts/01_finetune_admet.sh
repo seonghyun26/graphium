@@ -15,6 +15,7 @@
 #   EPOCH_UNFREEZE_ALL   : epoch to unfreeze all layers (default: none, stay frozen)
 #   FINETUNING_CONFIG    : hydra finetuning config (default: admet)
 #   SUB_MODULE           : sub_module_from_pretrained (default: auto-detect)
+#   PRETRAIN_DATASET     : pretrain dataset name for W&B tags (default: auto-detect from ckpt path)
 #
 # Examples:
 #   bash scripts/01_finetune_admet.sh gpspp ./checkpoints/gpspp_largemix.ckpt 0
@@ -29,7 +30,6 @@ DEVICE=${3:-${DEVICE}}
 FINETUNE_DIM=${FINETUNE_DIM:-256}
 UNFREEZE_DEPTH=${UNFREEZE_DEPTH:-0}
 EPOCH_UNFREEZE_ALL=${EPOCH_UNFREEZE_ALL:-none}
-FINETUNING_CONFIG=${FINETUNING_CONFIG:-admet}
 ADDED_DEPTH=${ADDED_DEPTH:-4}
 
 # ── Determine sub_module and dim flags based on model ────────────────────────
@@ -49,9 +49,36 @@ case "${MODEL}" in
         ;;
 esac
 
-TAGS="['${MODEL}','finetune','admet']"
+# ── Infer pretrain dataset from checkpoint path for W&B tags ──────────────────
+if [[ -z "${PRETRAIN_DATASET:-}" ]]; then
+    CKPT_LOWER=$(echo "${CKPT}" | tr '[:upper:]' '[:lower:]')
+    if [[ "${CKPT_LOWER}" == *"largemix_rxrx3"* || "${CKPT_LOWER}" == *"largemixrxrx3"* ]]; then
+        PRETRAIN_DATASET="largemix_rxrx3"
+    elif [[ "${CKPT_LOWER}" == *"largemix"* || "${CKPT_LOWER}" == *"large-dataset"* ]]; then
+        PRETRAIN_DATASET="largemix"
+    elif [[ "${CKPT_LOWER}" == *"toymix"* || "${CKPT_LOWER}" == *"small-dataset"* ]]; then
+        PRETRAIN_DATASET="toymix"
+    elif [[ "${CKPT_LOWER}" == *"rxrx3"* ]]; then
+        PRETRAIN_DATASET="rxrx3"
+    else
+        PRETRAIN_DATASET="unknown"
+    fi
+fi
 
-echo "=== Fine-tuning ${MODEL} on ADMET (ckpt=${CKPT}, unfreeze=${UNFREEZE_DEPTH}) ==="
+# ── Auto-select finetuning config based on pretrain dataset ───────────────────
+if [[ -z "${FINETUNING_CONFIG:-}" ]]; then
+    case "${PRETRAIN_DATASET}" in
+        toymix)         FINETUNING_CONFIG="admet" ;;           # sub_module: zinc
+        largemix)       FINETUNING_CONFIG="admet_largemix" ;;  # sub_module: pcba_1328
+        rxrx3)          FINETUNING_CONFIG="admet_rxrx3" ;;     # sub_module: rxrx3
+        largemix_rxrx3) FINETUNING_CONFIG="admet_largemix_rxrx3" ;; # sub_module: rxrx3
+        *)              FINETUNING_CONFIG="admet" ;;
+    esac
+fi
+
+TAGS="['${MODEL}','finetune','admet','${PRETRAIN_DATASET}'${MODEL_TAG:+,'${MODEL_TAG}'}]"
+
+echo "=== Fine-tuning ${MODEL} on ADMET (ckpt=${CKPT}, pretrain=${PRETRAIN_DATASET}, unfreeze=${UNFREEZE_DEPTH}) ==="
 
 for task in "${ADMET_TASKS[@]}"; do
     echo "--- Task: ${task} ---"

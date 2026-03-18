@@ -114,25 +114,14 @@ hydra:
     task:
     - model=gpspp_800M
     - accelerator=gpu
-    - tasks=admet
+    - tasks=rxrx3
+    - training=rxrx3
+    - architecture=largemix
     - ++constants.seed=0
-    - ++constants.wandb.entity=eddy26
-    - ++constants.wandb.save_dir=null
-    - ++constants.wandb.project=graphium
-    - ++constants.wandb.tags=['gpspp','scratch','admet']
-    - ++constants.results_csv_dir=/home/shpark/prj-molrepr/graphium/results
-    - ++constants.raise_train_error=False
-    - ++constants.task=hia_hou
-    - ++datamodule.args.tdc_benchmark_names=hia_hou
-    - ++datamodule.args.num_workers=0
-    - ++datamodule.args.featurization_n_jobs=0
-    - ++architecture.task_heads.hia_hou.hidden_dims=256
-    - ++architecture.task_heads.hia_hou.depth=4
-    - ++trainer.model_checkpoint.save_last=False
   job:
     name: train_finetune_test
     chdir: null
-    override_dirname: ++architecture.task_heads.hia_hou.depth=4,++architecture.task_heads.hia_hou.hidden_dims=256,++constants.raise_train_error=False,++constants.results_csv_dir=/home/shpark/prj-molrepr/graphium/results,++constants.seed=0,++constants.task=hia_hou,++constants.wandb.entity=eddy26,++constants.wandb.project=graphium,++constants.wandb.save_dir=null,++constants.wandb.tags=['gpspp','scratch','admet'],++datamodule.args.featurization_n_jobs=0,++datamodule.args.num_workers=0,++datamodule.args.tdc_benchmark_names=hia_hou,++trainer.model_checkpoint.save_last=False,accelerator=gpu,model=gpspp_800M,tasks=admet
+    override_dirname: ++constants.seed=0,accelerator=gpu,architecture=largemix,model=gpspp_800M,tasks=rxrx3,training=rxrx3
     id: ???
     num: ???
     config_name: main
@@ -160,14 +149,12 @@ hydra:
     output_dir: /home/shpark/prj-molrepr/graphium
     choices:
       model: gpspp_800M
-      training: toymix
-      tasks: admet
-      tasks/loss_metrics_datamodule: admet
-      tasks/task_heads: admet
-      architecture: toymix
+      training: rxrx3
+      tasks: rxrx3
+      architecture: largemix
       accelerator: gpu
-      training/model: toymix_gpspp_800M
-      training/accelerator: toymix_gpu
+      training/model: rxrx3_gpspp_800M
+      training/accelerator: rxrx3_gpu
       hydra/env: default
       hydra/callbacks: null
       hydra/job_logging: default

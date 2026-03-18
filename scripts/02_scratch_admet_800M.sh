@@ -15,7 +15,7 @@ DEVICE=${1:-${DEVICE}}
 FINETUNE_DIM=${FINETUNE_DIM:-256}
 ADDED_DEPTH=${ADDED_DEPTH:-4}
 
-TAGS="['gpspp','scratch','admet']"
+TAGS="['gpspp','gpspp_800M','scratch','admet','no_pretrain']"
 
 echo "=== Training GPS++ 800M from scratch on ADMET (baseline) ==="
 

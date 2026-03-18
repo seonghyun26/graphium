@@ -91,16 +91,19 @@ def _save_results_csv(results: dict, cfg: dict, output_dir: str) -> None:
 
     # Write header if file doesn't exist; expand columns if needed; then append
     file_exists = os.path.isfile(csv_path)
-    all_fieldnames = sorted(row.keys())
 
     if file_exists:
         with open(csv_path, "r", newline="") as rf:
             reader = csv.DictReader(rf)
-            existing_cols = set(reader.fieldnames or [])
-        new_cols = set(row.keys()) - existing_cols
+            existing_cols = list(reader.fieldnames or [])
+        new_cols = set(row.keys()) - set(existing_cols)
         if new_cols:
-            all_fieldnames = sorted(existing_cols | set(row.keys()))
+            all_fieldnames = existing_cols + sorted(new_cols)
             _rewrite_csv_header(csv_path, all_fieldnames)
+        else:
+            all_fieldnames = existing_cols
+    else:
+        all_fieldnames = sorted(row.keys())
 
     with open(csv_path, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=all_fieldnames, extrasaction="ignore")

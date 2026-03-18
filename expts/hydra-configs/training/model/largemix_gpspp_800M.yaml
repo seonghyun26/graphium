@@ -11,7 +11,8 @@ constants:
 
 datamodule:
   args:
-    batch_size_training: 192
+    batch_size_training: 128
+    dataloading_from: ram  # load all graphs into RAM (faster epochs, ~100GB RAM needed)
     task_specific_args:
       l1000_vcap:
         df_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/LINCS_L1000_VCAP_0-2_th2.csv.gz
@@ -30,5 +31,7 @@ datamodule:
         splits_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/pcqm4m_g25_n4_random_splits.pt
 
 trainer:
+  trainer:
+    accumulate_grad_batches: 3  # effective batch = 128 * 3 = 384
   model_checkpoint:
     dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/large-dataset/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/
