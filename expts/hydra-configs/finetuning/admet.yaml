@@ -41,6 +41,7 @@ constants:
   max_epochs: 100
   data_dir: expts/data/admet/${constants.task}
   raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/admet/${constants.task}
 
 predictor:
   optim_kwargs:

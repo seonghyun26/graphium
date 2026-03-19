@@ -1,6 +1,6 @@
 # @package _global_
 #
-# ADMET fine-tuning from a LargeMix+RxRx3-pretrained model.
+# ADMET fine-tuning from a ToyMix+RxRx3-pretrained model.
 # Uses rxrx3 task head as the sub_module_from_pretrained.
 
 defaults:
@@ -8,7 +8,7 @@ defaults:
 
 constants:
   task: lipophilicity_astrazeneca
-  name: finetuning_${constants.task}_largemix_rxrx3
+  name: finetuning_${constants.task}_toymix_rxrx3
   wandb:
     name: ${constants.name}
     project: ${constants.task}

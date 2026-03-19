@@ -6,7 +6,8 @@
 #
 # Arguments:
 #   model    : gcn | mpnn | gpspp | pairformer
-#   dataset  : toymix | largemix | rxrx3 | largemix_rxrx3
+#   dataset  : toymix | largemix | rxrx3 | dti | largemix_rxrx3 | toymix_rxrx3
+#              | largemix_dti | toymix_dti | toymix_rxrx3_dti
 #   gpu_id   : CUDA device index (default: 0)
 #
 # Examples:
@@ -70,8 +71,36 @@ case "${DATASET}" in
         TRAINING=largemix
         ARCHITECTURE=largemix
         ;;
+    toymix_rxrx3)
+        TASKS=toymix_rxrx3
+        TRAINING=toymix_rxrx3
+        ARCHITECTURE=toymix
+        [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
+        ;;
+    dti)
+        TASKS=dti
+        TRAINING=dti
+        ARCHITECTURE=largemix
+        ;;
+    largemix_dti)
+        TASKS=largemix_dti
+        TRAINING=largemix
+        ARCHITECTURE=largemix
+        ;;
+    toymix_dti)
+        TASKS=toymix_dti
+        TRAINING=toymix_dti
+        ARCHITECTURE=toymix
+        [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
+        ;;
+    toymix_rxrx3_dti)
+        TASKS=toymix_rxrx3_dti
+        TRAINING=toymix_rxrx3_dti
+        ARCHITECTURE=toymix
+        [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
+        ;;
     *)
-        echo "Error: unknown dataset '${DATASET}'. Choose from: toymix, largemix, rxrx3, largemix_rxrx3"
+        echo "Error: unknown dataset '${DATASET}'."
         exit 1
         ;;
 esac
@@ -79,6 +108,11 @@ esac
 # Override batch size for toymix with simple models
 if [[ "${DATASET}" == "toymix" && ("${MODEL}" == "gcn" || "${MODEL}" == "mpnn") ]]; then
     BATCH_SIZE=${BATCH_SIZE:-1024}
+fi
+
+# Cap batch size for DTI datasets (2560-dim output head needs more memory)
+if [[ "${DATASET}" == "dti" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" ]]; then
+    (( BATCH_SIZE > 128 )) && BATCH_SIZE=128
 fi
 
 TAGS="['${MODEL}','pretrain','${DATASET}']"
@@ -94,17 +128,20 @@ esac
 # ── Optional: sample_size for dataset size ablation ──────────────────────────
 SAMPLE_FLAGS=""
 if [[ -n "${SAMPLE_SIZE:-}" ]]; then
-    if [[ "${DATASET}" == "toymix" ]]; then
+    if [[ "${DATASET}" == "toymix" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" ]]; then
         for t in qm9 tox21 zinc; do
             SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.${t}.sample_size=${SAMPLE_SIZE}"
         done
-    elif [[ "${DATASET}" == "largemix" || "${DATASET}" == "largemix_rxrx3" ]]; then
+    elif [[ "${DATASET}" == "largemix" || "${DATASET}" == "largemix_rxrx3" || "${DATASET}" == "largemix_dti" ]]; then
         for t in l1000_vcap l1000_mcf7 pcba_1328 pcqm4m_g25 pcqm4m_n4; do
             SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.${t}.sample_size=${SAMPLE_SIZE}"
         done
     fi
-    if [[ "${DATASET}" == "rxrx3" || "${DATASET}" == "largemix_rxrx3" ]]; then
+    if [[ "${DATASET}" == "rxrx3" || "${DATASET}" == "largemix_rxrx3" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_rxrx3_dti" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.rxrx3.sample_size=${SAMPLE_SIZE}"
+    fi
+    if [[ "${DATASET}" == "dti" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" ]]; then
+        SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.dti.sample_size=${SAMPLE_SIZE}"
     fi
 fi
 

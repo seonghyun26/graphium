@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Retry failed ADMET finetuning tasks for the ToyMix-pretrained GPS++ 800M.
+# Retry failed ADMET finetuning tasks for ToyMix-pretrained GPS++ 800M.
 #
 # Usage:
 #   bash scripts/run_finetune_toymix_retry.sh [gpu_id]
@@ -8,18 +8,16 @@ set -euo pipefail
 source "$(dirname "$0")/common.sh"
 
 DEVICE=${1:-4}
-CKPT=/home/shpark/prj-molrepr/graphium/models_checkpoints/small-dataset/gpspp_800M/2026-03-17_21-26-42_20260317_212642/last.ckpt
 FINETUNE_DIM=256
 ADDED_DEPTH=4
 FINETUNING_CONFIG=admet
 
-FAILED_TASKS=(caco2_wang bioavailability_ma lipophilicity_astrazeneca solubility_aqsoldb)
-TAGS="['gpspp','finetune','admet','toymix','gpspp_800M']"
+run_task() {
+    local CKPT=$1
+    local task=$2
+    local TAGS=$3
 
-echo "=== Retrying ${#FAILED_TASKS[@]} failed tasks (toymix pretrained, GPU ${DEVICE}) ==="
-
-for task in "${FAILED_TASKS[@]}"; do
-    echo "--- Task: ${task} ---"
+    echo "--- Task: ${task} (ckpt: $(basename $(dirname ${CKPT}))) ---"
 
     CUDA_VISIBLE_DEVICES=${DEVICE} graphium-train \
         model=gpspp \
@@ -46,4 +44,21 @@ for task in "${FAILED_TASKS[@]}"; do
     || echo "WARN: ${task} failed, continuing..."
 
     sleep 1
-done
+}
+
+# ── Toymix 100%: missing hia_hou, pgp_broccatelli ─────────────────────────
+CKPT_100=/home/shpark/prj-molrepr/graphium/models_checkpoints/small-dataset/gpspp_800M/2026-03-17_21-26-42_20260317_212642/last.ckpt
+TAGS_100="['gpspp','finetune','admet','toymix','gpspp_800M']"
+
+echo "=== Toymix 100%: retrying 2 failed tasks (GPU ${DEVICE}) ==="
+run_task "${CKPT_100}" hia_hou "${TAGS_100}"
+run_task "${CKPT_100}" pgp_broccatelli "${TAGS_100}"
+
+# ── Toymix 50%: missing caco2_wang ─────────────────────────────────────────
+CKPT_50=/home/shpark/prj-molrepr/graphium/models_checkpoints/small-dataset/gpspp_800M/2026-03-18_14-53-57_20260318_145357/last.ckpt
+TAGS_50="['gpspp','finetune','admet','toymix_50pct','gpspp_800M']"
+
+echo "=== Toymix 50%: retrying 1 failed task (GPU ${DEVICE}) ==="
+run_task "${CKPT_50}" caco2_wang "${TAGS_50}"
+
+echo "=== All retries done ==="

@@ -13,7 +13,7 @@ constants:
   seed: 42
   max_epochs: 100
   data_dir: ../data/graphium/admet/${constants.task}
-  datacache_path: ../datacache/admet/${constants.task}
+  datacache_path: /home/shpark/prj-molrepr/datacache/admet/${constants.task}
   raise_train_error: true
   metric: ${get_metric_name:${constants.task}}
 

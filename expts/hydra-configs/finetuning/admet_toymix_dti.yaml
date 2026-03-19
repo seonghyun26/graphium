@@ -1,14 +1,14 @@
 # @package _global_
 #
-# ADMET fine-tuning from a LargeMix+RxRx3-pretrained model.
-# Uses rxrx3 task head as the sub_module_from_pretrained.
+# ADMET fine-tuning from a ToyMix+DTI-pretrained model.
+# Uses dti task head as the sub_module_from_pretrained.
 
 defaults:
   - override /tasks/loss_metrics_datamodule: admet
 
 constants:
   task: lipophilicity_astrazeneca
-  name: finetuning_${constants.task}_largemix_rxrx3
+  name: finetuning_${constants.task}_toymix_dti
   wandb:
     name: ${constants.name}
     project: ${constants.task}
@@ -29,7 +29,7 @@ finetuning:
   level: graph
   pretrained_model: dummy-pretrained-model
   finetuning_module: task_heads
-  sub_module_from_pretrained: rxrx3
+  sub_module_from_pretrained: dti
   new_sub_module: ${constants.task}
   drop_depth: 1
   new_out_dim: 8

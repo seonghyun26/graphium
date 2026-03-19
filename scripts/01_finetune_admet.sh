@@ -52,14 +52,22 @@ esac
 # ── Infer pretrain dataset from checkpoint path for W&B tags ──────────────────
 if [[ -z "${PRETRAIN_DATASET:-}" ]]; then
     CKPT_LOWER=$(echo "${CKPT}" | tr '[:upper:]' '[:lower:]')
-    if [[ "${CKPT_LOWER}" == *"largemix_rxrx3"* || "${CKPT_LOWER}" == *"largemixrxrx3"* ]]; then
+    if [[ "${CKPT_LOWER}" == *"toymix_rxrx3"* || "${CKPT_LOWER}" == *"toymix-rxrx3"* ]]; then
+        PRETRAIN_DATASET="toymix_rxrx3"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti"* || "${CKPT_LOWER}" == *"toymix-dti"* ]]; then
+        PRETRAIN_DATASET="toymix_dti"
+    elif [[ "${CKPT_LOWER}" == *"largemix_rxrx3"* || "${CKPT_LOWER}" == *"largemix-rxrx3"* ]]; then
         PRETRAIN_DATASET="largemix_rxrx3"
+    elif [[ "${CKPT_LOWER}" == *"largemix_dti"* || "${CKPT_LOWER}" == *"largemix-dti"* ]]; then
+        PRETRAIN_DATASET="largemix_dti"
     elif [[ "${CKPT_LOWER}" == *"largemix"* || "${CKPT_LOWER}" == *"large-dataset"* ]]; then
         PRETRAIN_DATASET="largemix"
     elif [[ "${CKPT_LOWER}" == *"toymix"* || "${CKPT_LOWER}" == *"small-dataset"* ]]; then
         PRETRAIN_DATASET="toymix"
     elif [[ "${CKPT_LOWER}" == *"rxrx3"* ]]; then
         PRETRAIN_DATASET="rxrx3"
+    elif [[ "${CKPT_LOWER}" == *"dti"* ]]; then
+        PRETRAIN_DATASET="dti"
     else
         PRETRAIN_DATASET="unknown"
     fi
@@ -68,10 +76,14 @@ fi
 # ── Auto-select finetuning config based on pretrain dataset ───────────────────
 if [[ -z "${FINETUNING_CONFIG:-}" ]]; then
     case "${PRETRAIN_DATASET}" in
-        toymix)         FINETUNING_CONFIG="admet" ;;           # sub_module: zinc
-        largemix)       FINETUNING_CONFIG="admet_largemix" ;;  # sub_module: pcba_1328
-        rxrx3)          FINETUNING_CONFIG="admet_rxrx3" ;;     # sub_module: rxrx3
-        largemix_rxrx3) FINETUNING_CONFIG="admet_largemix_rxrx3" ;; # sub_module: rxrx3
+        toymix)         FINETUNING_CONFIG="admet" ;;                  # sub_module: zinc
+        largemix)       FINETUNING_CONFIG="admet_largemix" ;;         # sub_module: pcba_1328
+        rxrx3)          FINETUNING_CONFIG="admet_rxrx3" ;;            # sub_module: rxrx3
+        largemix_rxrx3) FINETUNING_CONFIG="admet_largemix_rxrx3" ;;   # sub_module: rxrx3
+        toymix_rxrx3)   FINETUNING_CONFIG="admet_toymix_rxrx3" ;;     # sub_module: rxrx3
+        dti)            FINETUNING_CONFIG="admet_dti" ;;               # sub_module: dti
+        largemix_dti)   FINETUNING_CONFIG="admet_largemix_dti" ;;      # sub_module: dti
+        toymix_dti)     FINETUNING_CONFIG="admet_toymix_dti" ;;        # sub_module: dti
         *)              FINETUNING_CONFIG="admet" ;;
     esac
 fi
