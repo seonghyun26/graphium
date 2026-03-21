@@ -12,13 +12,16 @@ datamodule:
         seed: 0
         task_level: graph
       dti:
-        df_path: /home/shpark/prj-molrepr/graphium/data/dti/protein-esm2.csv
-        smiles_col: "SMILES"
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/dti_esm2_100k.csv
+        smiles_col: "SMILES_nometa"
         label_cols: feature_*
         split_val: 0.1
         split_test: 0.1
         seed: 0
         task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
       qm9:
         df: null
         df_path: ${constants.data_dir}/qm9.csv
@@ -65,7 +68,7 @@ architecture:
       residual_type: none
     dti:
       task_level: graph
-      out_dim: 384
+      out_dim: 2560
       hidden_dims: 128
       depth: 2
       activation: relu

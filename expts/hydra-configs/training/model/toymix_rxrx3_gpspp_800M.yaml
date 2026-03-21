@@ -1,0 +1,17 @@
+# @package _global_
+
+# GPS++ 800M with the ToyMix + RxRx3 dataset.
+constants:
+  name: toymix_rxrx3_gpspp_800M
+  seed: 42
+  max_epochs: 100
+  data_dir: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix-rxrx3/
+
+datamodule:
+  args:
+    batch_size_training: 192
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix-rxrx3/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/

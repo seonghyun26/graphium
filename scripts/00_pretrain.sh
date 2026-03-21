@@ -5,7 +5,7 @@
 #   bash scripts/00_pretrain.sh <model> <dataset> [gpu_id]
 #
 # Arguments:
-#   model    : gcn | mpnn | gpspp | pairformer
+#   model    : gcn | mpnn | gpspp | gpspp_800M | pairformer
 #   dataset  : toymix | largemix | rxrx3 | dti | largemix_rxrx3 | toymix_rxrx3
 #              | largemix_dti | toymix_dti | toymix_rxrx3_dti
 #   gpu_id   : CUDA device index (default: 0)
@@ -37,13 +37,18 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-8}
         BATCH_SIZE=${BATCH_SIZE:-300}
         ;;
+    gpspp_800M)
+        DIM=${DIM:-1536}
+        GNN_DEPTH=${GNN_DEPTH:-12}
+        BATCH_SIZE=${BATCH_SIZE:-192}
+        ;;
     pairformer)
         DIM=${DIM:-256}
         GNN_DEPTH=${GNN_DEPTH:-16}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
     *)
-        echo "Error: unknown model '${MODEL}'. Choose from: gcn, mpnn, gpspp, pairformer"
+        echo "Error: unknown model '${MODEL}'. Choose from: gcn, mpnn, gpspp, gpspp_800M, pairformer"
         exit 1
         ;;
 esac
@@ -122,6 +127,7 @@ case "${MODEL}" in
     gcn)        DIM_FLAGS=$(gcn_dim_flags "${DIM}") ;;
     mpnn)       DIM_FLAGS=$(mpnn_dim_flags "${DIM}") ;;
     gpspp)      DIM_FLAGS=$(gpspp_dim_flags "${DIM}") ;;
+    gpspp_800M) DIM_FLAGS="" ;;  # gpspp_800M sets dims in model config
     pairformer) DIM_FLAGS="" ;;  # pairformer uses config defaults
 esac
 

@@ -1,19 +1,21 @@
 # @package _global_
 
-# GPS++ 800M with the LargeMix (and LargeMix+RxRx3) dataset.
+# GPS++ 800M with the LargeMix + DTI dataset.
 constants:
-  name: largemix_gpspp_800M
+  name: largemix_dti_gpspp_800M
   seed: 42
   max_epochs: 100
   data_dir: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset
   raise_train_error: true
-  datacache_path: /home/shpark/prj-molrepr/datacache/neurips2023-large/
+  datacache_path: /home/shpark/prj-molrepr/datacache/largemix-dti/
 
 datamodule:
   args:
     batch_size_training: 128
     dataloading_from: disk
     task_specific_args:
+      dti:
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/dti_esm2_100k.csv
       l1000_vcap:
         df_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/LINCS_L1000_VCAP_0-2_th2.csv.gz
         splits_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/l1000_vcap_random_splits.pt
@@ -32,6 +34,6 @@ datamodule:
 
 trainer:
   trainer:
-    accumulate_grad_batches: 3  # effective batch = 128 * 3 = 384
+    accumulate_grad_batches: 3
   model_checkpoint:
-    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/large-dataset/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/largemix-dti/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/
