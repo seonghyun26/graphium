@@ -5,7 +5,7 @@
 #   bash scripts/01_finetune_admet.sh <model> <checkpoint> [gpu_id]
 #
 # Arguments:
-#   model      : gcn | mpnn | gpspp
+#   model      : gcn | mpnn | gpspp | gpspp_800M
 #   checkpoint : path to pre-trained .ckpt file
 #   gpu_id     : CUDA device index (default: 0)
 #
@@ -43,6 +43,9 @@ case "${MODEL}" in
     gpspp)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
+    gpspp_800M)
+        DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
+        ;;
     *)
         echo "Error: unknown model '${MODEL}'."
         exit 1
@@ -52,10 +55,14 @@ esac
 # ── Infer pretrain dataset from checkpoint path for W&B tags ──────────────────
 if [[ -z "${PRETRAIN_DATASET:-}" ]]; then
     CKPT_LOWER=$(echo "${CKPT}" | tr '[:upper:]' '[:lower:]')
-    if [[ "${CKPT_LOWER}" == *"toymix_rxrx3"* || "${CKPT_LOWER}" == *"toymix-rxrx3"* ]]; then
+    if [[ "${CKPT_LOWER}" == *"toymix_rxrx3_dti"* || "${CKPT_LOWER}" == *"toymix-rxrx3-dti"* ]]; then
+        PRETRAIN_DATASET="toymix_rxrx3_dti"
+    elif [[ "${CKPT_LOWER}" == *"toymix_rxrx3"* || "${CKPT_LOWER}" == *"toymix-rxrx3"* ]]; then
         PRETRAIN_DATASET="toymix_rxrx3"
     elif [[ "${CKPT_LOWER}" == *"toymix_dti"* || "${CKPT_LOWER}" == *"toymix-dti"* ]]; then
         PRETRAIN_DATASET="toymix_dti"
+    elif [[ "${CKPT_LOWER}" == *"rxrx3_dti"* || "${CKPT_LOWER}" == *"rxrx3-dti"* ]]; then
+        PRETRAIN_DATASET="rxrx3_dti"
     elif [[ "${CKPT_LOWER}" == *"largemix_rxrx3"* || "${CKPT_LOWER}" == *"largemix-rxrx3"* ]]; then
         PRETRAIN_DATASET="largemix_rxrx3"
     elif [[ "${CKPT_LOWER}" == *"largemix_dti"* || "${CKPT_LOWER}" == *"largemix-dti"* ]]; then
@@ -84,6 +91,8 @@ if [[ -z "${FINETUNING_CONFIG:-}" ]]; then
         dti)            FINETUNING_CONFIG="admet_dti" ;;               # sub_module: dti
         largemix_dti)   FINETUNING_CONFIG="admet_largemix_dti" ;;      # sub_module: dti
         toymix_dti)     FINETUNING_CONFIG="admet_toymix_dti" ;;        # sub_module: dti
+        rxrx3_dti)      FINETUNING_CONFIG="admet_rxrx3_dti" ;;       # sub_module: dti
+        toymix_rxrx3_dti) FINETUNING_CONFIG="admet_toymix_dti" ;;    # sub_module: dti
         *)              FINETUNING_CONFIG="admet" ;;
     esac
 fi

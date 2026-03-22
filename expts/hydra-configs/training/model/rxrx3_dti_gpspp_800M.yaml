@@ -1,0 +1,17 @@
+# @package _global_
+
+# GPS++ 800M with the RxRx3 + DTI dataset.
+constants:
+  name: rxrx3_dti_gpspp_800M
+  seed: 42
+  max_epochs: 100
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/rxrx3-dti/
+
+datamodule:
+  args:
+    batch_size_training: 64
+    num_workers: 2
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/rxrx3-dti/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/

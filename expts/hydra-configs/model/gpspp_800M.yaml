@@ -35,3 +35,7 @@ architecture:
   graph_output_nn:
     graph:
       hidden_dims: 1536
+      out_dim: 1024
+    node:
+      hidden_dims: 1536
+      out_dim: 256

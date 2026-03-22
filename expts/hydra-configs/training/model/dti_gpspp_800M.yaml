@@ -10,7 +10,7 @@ constants:
 
 datamodule:
   args:
-    batch_size_training: 128
+    batch_size_training: 64
 trainer:
   model_checkpoint:
     dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/dti/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/

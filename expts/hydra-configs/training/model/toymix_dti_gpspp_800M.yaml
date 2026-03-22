@@ -11,7 +11,8 @@ constants:
 
 datamodule:
   args:
-    batch_size_training: 128
+    batch_size_training: 64
+    num_workers: 0  # avoid CoW memory duplication with ram loading
 trainer:
   model_checkpoint:
     dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix-dti/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/

@@ -13,6 +13,8 @@ datamodule:
   args:
     batch_size_training: 128
     dataloading_from: disk
+    num_workers: 4
+    persistent_workers: true
     task_specific_args:
       l1000_vcap:
         df_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/LINCS_L1000_VCAP_0-2_th2.csv.gz

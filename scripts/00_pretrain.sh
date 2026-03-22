@@ -20,6 +20,9 @@ MODEL=${1:?  "Usage: $0 <model> <dataset> [gpu_id]"}
 DATASET=${2:?  "Usage: $0 <model> <dataset> [gpu_id]"}
 DEVICE=${3:-${DEVICE}}
 
+# Track whether BATCH_SIZE was explicitly set by the user
+_USER_BATCH_SIZE=${BATCH_SIZE:-}
+
 # ── Model-specific defaults ──────────────────────────────────────────────────
 case "${MODEL}" in
     gcn)
@@ -104,6 +107,11 @@ case "${DATASET}" in
         ARCHITECTURE=toymix
         [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
         ;;
+    rxrx3_dti)
+        TASKS=rxrx3_dti
+        TRAINING=rxrx3_dti
+        ARCHITECTURE=largemix
+        ;;
     *)
         echo "Error: unknown dataset '${DATASET}'."
         exit 1
@@ -116,8 +124,11 @@ if [[ "${DATASET}" == "toymix" && ("${MODEL}" == "gcn" || "${MODEL}" == "mpnn") 
 fi
 
 # Cap batch size for DTI datasets (2560-dim output head needs more memory)
-if [[ "${DATASET}" == "dti" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" ]]; then
-    (( BATCH_SIZE > 128 )) && BATCH_SIZE=128
+# Only applies when BATCH_SIZE was explicitly set; otherwise config handles it.
+if [[ -n "${_USER_BATCH_SIZE}" ]]; then
+    if [[ "${DATASET}" == "dti" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" ]]; then
+        (( BATCH_SIZE > 128 )) && BATCH_SIZE=128
+    fi
 fi
 
 TAGS="['${MODEL}','pretrain','${DATASET}']"
@@ -143,16 +154,22 @@ if [[ -n "${SAMPLE_SIZE:-}" ]]; then
             SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.${t}.sample_size=${SAMPLE_SIZE}"
         done
     fi
-    if [[ "${DATASET}" == "rxrx3" || "${DATASET}" == "largemix_rxrx3" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_rxrx3_dti" ]]; then
+    if [[ "${DATASET}" == "rxrx3" || "${DATASET}" == "largemix_rxrx3" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.rxrx3.sample_size=${SAMPLE_SIZE}"
     fi
-    if [[ "${DATASET}" == "dti" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" ]]; then
+    if [[ "${DATASET}" == "dti" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.dti.sample_size=${SAMPLE_SIZE}"
     fi
 fi
 
+# ── Build batch size flag (only override if user explicitly set BATCH_SIZE) ──
+BATCH_FLAGS=""
+if [[ -n "${_USER_BATCH_SIZE}" ]]; then
+    BATCH_FLAGS="++datamodule.args.batch_size_training=${BATCH_SIZE}"
+fi
+
 # ── Run ──────────────────────────────────────────────────────────────────────
-echo "=== Pre-training ${MODEL} on ${DATASET} (dim=${DIM}, depth=${GNN_DEPTH}, bs=${BATCH_SIZE}) ==="
+echo "=== Pre-training ${MODEL} on ${DATASET} (dim=${DIM}, depth=${GNN_DEPTH}, bs=${BATCH_SIZE:-config}) ==="
 
 CUDA_VISIBLE_DEVICES=${DEVICE} graphium-train \
     model=${MODEL} \
@@ -163,7 +180,7 @@ CUDA_VISIBLE_DEVICES=${DEVICE} graphium-train \
     $(wandb_flags "${TAGS}") \
     ++constants.norm=layer_norm \
     ++architecture.gnn.depth=${GNN_DEPTH} \
-    ++datamodule.args.batch_size_training=${BATCH_SIZE} \
+    ${BATCH_FLAGS} \
     ${DIM_FLAGS} \
     ${SAMPLE_FLAGS} \
     ${EXTRA_FLAGS:-}
