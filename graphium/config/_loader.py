@@ -506,6 +506,16 @@ def save_params_to_wandb(
     featurizer_path = os.path.join(wandb_dir, "featurizer.pickle")
     joblib.dump(datamodule.smiles_transformer, featurizer_path)
 
+    # Log dataset sizes to wandb
+    if wandb_run is not None:
+        dataset_info = {}
+        for stage, ds in [("train", datamodule.train_ds), ("val", datamodule.val_ds), ("test", datamodule.test_ds)]:
+            if ds is not None:
+                dataset_info[f"dataset/{stage}_size"] = len(ds)
+        dataset_info["dataset/tasks"] = list(datamodule.task_dataset_processing_params.keys())
+        dataset_info["dataset/num_tasks"] = len(datamodule.task_dataset_processing_params)
+        wandb_run.config.update(dataset_info, allow_val_change=True)
+
     # Save the featurizer and configs into wandb
     if wandb_run is not None:
         wandb_run.save(os.path.join(wandb_dir, "*.yaml"), wandb_dir)
