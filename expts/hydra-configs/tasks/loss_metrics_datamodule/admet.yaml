@@ -139,3 +139,4 @@ datamodule:
     # TDC specific
     tdc_benchmark_names: null
     tdc_train_val_seed: ${constants.seed}
+    processed_graph_data_path: null

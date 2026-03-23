@@ -65,6 +65,8 @@ if [[ -z "${PRETRAIN_DATASET:-}" ]]; then
         PRETRAIN_DATASET="rxrx3_dti"
     elif [[ "${CKPT_LOWER}" == *"largemix_rxrx3"* || "${CKPT_LOWER}" == *"largemix-rxrx3"* ]]; then
         PRETRAIN_DATASET="largemix_rxrx3"
+    elif [[ "${CKPT_LOWER}" == *"largemix_rxrx3_dti"* || "${CKPT_LOWER}" == *"largemix-rxrx3-dti"* ]]; then
+        PRETRAIN_DATASET="largemix_rxrx3_dti"
     elif [[ "${CKPT_LOWER}" == *"largemix_dti"* || "${CKPT_LOWER}" == *"largemix-dti"* ]]; then
         PRETRAIN_DATASET="largemix_dti"
     elif [[ "${CKPT_LOWER}" == *"largemix"* || "${CKPT_LOWER}" == *"large-dataset"* ]]; then
@@ -92,7 +94,8 @@ if [[ -z "${FINETUNING_CONFIG:-}" ]]; then
         largemix_dti)   FINETUNING_CONFIG="admet_largemix_dti" ;;      # sub_module: dti
         toymix_dti)     FINETUNING_CONFIG="admet_toymix_dti" ;;        # sub_module: dti
         rxrx3_dti)      FINETUNING_CONFIG="admet_rxrx3_dti" ;;       # sub_module: dti
-        toymix_rxrx3_dti) FINETUNING_CONFIG="admet_toymix_dti" ;;    # sub_module: dti
+        toymix_rxrx3_dti) FINETUNING_CONFIG="admet_toymix_rxrx3_dti" ;;  # sub_module: dti
+        largemix_rxrx3_dti) FINETUNING_CONFIG="admet_largemix_rxrx3_dti" ;; # sub_module: dti
         *)              FINETUNING_CONFIG="admet" ;;
     esac
 fi

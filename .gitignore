@@ -202,4 +202,4 @@ dmypy.json
 *.parquet
 *.toml
 
-*/autoresearch/*
+autoresearch/

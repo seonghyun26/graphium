@@ -11,3 +11,5 @@ constants:
 trainer:
   model_checkpoint:
     dirpath: models_checkpoints/toymix-dti/pairformer/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed  # Pairformer triangle ops overflow fp16; bf16 has float32-range exponents

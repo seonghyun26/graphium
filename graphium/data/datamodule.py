@@ -2525,14 +2525,22 @@ class ADMETBenchmarkDataModule(MultitaskFromSmilesDataModule):
         split_path = fs.join(cache_dir, f"{name}_split.csv")
         split.to_csv(split_path, index=False)
 
-        # if name in ["half_life_obach"]:
-        #     label_normalization = {
-        #         "method": "unit",
-        #         "normalize_val_test": False,
-        #     }
-        # else:
-            # label_normalization = None
-        label_normalization = None    
+        # Excretion tasks have heavily skewed targets (e.g. half_life 0.06-1200)
+        # that cause MAE loss to oscillate without normalization.
+        # Other regression tasks (caco2, lipophilicity, etc.) have compact ranges
+        # and work fine without normalization.
+        NEEDS_NORMALIZATION = {
+            "half_life_obach",
+            "clearance_hepatocyte_az",
+            "clearance_microsome_az",
+        }
+        if name in NEEDS_NORMALIZATION:
+            label_normalization = {
+                "method": "normal",
+                "normalize_val_test": True,
+            }
+        else:
+            label_normalization = None
 
         return DatasetProcessingParams(
             df=data,
