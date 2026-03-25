@@ -46,6 +46,12 @@ case "${MODEL}" in
     gpspp_800M)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
+    pairformer)
+        DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
+        ;;
+    pairformer_boltz)
+        DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
+        ;;
     *)
         echo "Error: unknown model '${MODEL}'."
         exit 1

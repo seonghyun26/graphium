@@ -11,7 +11,7 @@ constants:
 
 datamodule:
   args:
-    batch_size_training: 64
+    batch_size_training: 48
     dataloading_from: disk
     task_specific_args:
       dti:
@@ -34,6 +34,6 @@ datamodule:
 
 trainer:
   trainer:
-    accumulate_grad_batches: 6
+    accumulate_grad_batches: 8
   model_checkpoint:
     dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/largemix-dti/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/

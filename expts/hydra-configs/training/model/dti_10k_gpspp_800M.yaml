@@ -1,0 +1,16 @@
+# @package _global_
+
+constants:
+  name: dti_10k_gpspp_800M
+  seed: 42
+  max_epochs: 100
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/dti_10k/
+
+datamodule:
+  args:
+    batch_size_training: 64
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/dti_10k/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/

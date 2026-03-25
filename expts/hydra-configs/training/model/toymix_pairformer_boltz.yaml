@@ -14,6 +14,7 @@ datamodule:
     batch_size_training: 16
     batch_size_inference: 16
     num_workers: 0           # avoid CoW memory duplication with ram loading (same as toymix_dti_gpspp_800M)
+    persistent_workers: false
     featurization_n_jobs: 0  # avoid loky pickling issues with large models
 
 trainer:

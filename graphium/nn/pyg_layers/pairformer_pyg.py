@@ -20,6 +20,7 @@ operating on PyG Batch objects.
 """
 
 import math
+from contextlib import nullcontext
 from typing import Callable, Optional, Union
 
 import torch
@@ -124,8 +125,10 @@ class TriangleMultiplicationOutgoing(nn.Module):
         z_ij = proj_out(norm_out(∑_k a_ik ⊗ b_jk)) * σ(gate_out(z_ij))
     """
 
-    def __init__(self, dim: int) -> None:
+    def __init__(self, dim: int, tri_mul_mode: str = "einsum", force_float32: bool = True) -> None:
         super().__init__()
+        self.tri_mul_mode = tri_mul_mode
+        self.force_float32 = force_float32
         self.norm_in = nn.LayerNorm(dim, eps=1e-5)
         self.p_in = nn.Linear(dim, 2 * dim, bias=False)
         self.g_in = nn.Linear(dim, 2 * dim, bias=False)
@@ -139,22 +142,20 @@ class TriangleMultiplicationOutgoing(nn.Module):
         _gating_init(self.g_out.weight)
 
     def forward(self, x: Tensor, mask: Tensor) -> Tensor:
-        """
-        Parameters
-        ----------
-        x : Tensor (B, N, N, D)
-        mask : Tensor (B, N, N)
-
-        Returns
-        -------
-        Tensor (B, N, N, D)
-        """
         x = self.norm_in(x)
         x_in = x
         x = self.p_in(x) * self.g_in(x).sigmoid()
         x = x * mask.unsqueeze(-1)
-        a, b = torch.chunk(x.float(), 2, dim=-1)
-        x = torch.einsum("bikd,bjkd->bijd", a, b)
+        a, b = torch.chunk(x, 2, dim=-1)
+        if self.force_float32:
+            a, b = a.float(), b.float()
+        if self.tri_mul_mode == "bmm":
+            B, I, K, D = a.shape
+            a_r = a.permute(0, 3, 1, 2).reshape(B * D, I, K)
+            b_r = b.permute(0, 3, 1, 2).reshape(B * D, I, K)
+            x = torch.bmm(a_r, b_r.transpose(1, 2)).reshape(B, D, I, I).permute(0, 2, 3, 1)
+        else:
+            x = torch.einsum("bikd,bjkd->bijd", a, b)
         x = self.p_out(self.norm_out(x)) * self.g_out(x_in).sigmoid()
         return x
 
@@ -166,8 +167,10 @@ class TriangleMultiplicationIncoming(nn.Module):
         z_ij = proj_out(norm_out(∑_k a_ki ⊗ b_kj)) * σ(gate_out(z_ij))
     """
 
-    def __init__(self, dim: int) -> None:
+    def __init__(self, dim: int, tri_mul_mode: str = "einsum", force_float32: bool = True) -> None:
         super().__init__()
+        self.tri_mul_mode = tri_mul_mode
+        self.force_float32 = force_float32
         self.norm_in = nn.LayerNorm(dim, eps=1e-5)
         self.p_in = nn.Linear(dim, 2 * dim, bias=False)
         self.g_in = nn.Linear(dim, 2 * dim, bias=False)
@@ -181,22 +184,20 @@ class TriangleMultiplicationIncoming(nn.Module):
         _gating_init(self.g_out.weight)
 
     def forward(self, x: Tensor, mask: Tensor) -> Tensor:
-        """
-        Parameters
-        ----------
-        x : Tensor (B, N, N, D)
-        mask : Tensor (B, N, N)
-
-        Returns
-        -------
-        Tensor (B, N, N, D)
-        """
         x = self.norm_in(x)
         x_in = x
         x = self.p_in(x) * self.g_in(x).sigmoid()
         x = x * mask.unsqueeze(-1)
-        a, b = torch.chunk(x.float(), 2, dim=-1)
-        x = torch.einsum("bkid,bkjd->bijd", a, b)
+        a, b = torch.chunk(x, 2, dim=-1)
+        if self.force_float32:
+            a, b = a.float(), b.float()
+        if self.tri_mul_mode == "bmm":
+            B, K, I, D = a.shape
+            a_r = a.permute(0, 3, 2, 1).reshape(B * D, I, K)
+            b_r = b.permute(0, 3, 2, 1).reshape(B * D, I, K)
+            x = torch.bmm(a_r, b_r.transpose(1, 2)).reshape(B, D, I, I).permute(0, 2, 3, 1)
+        else:
+            x = torch.einsum("bkid,bkjd->bijd", a, b)
         x = self.p_out(self.norm_out(x)) * self.g_out(x_in).sigmoid()
         return x
 
@@ -318,13 +319,16 @@ class AttentionPairBias(nn.Module):
     which nodes attend to which.
     """
 
-    def __init__(self, c_s: int, c_z: int, num_heads: int, inf: float = 1e6) -> None:
+    def __init__(self, c_s: int, c_z: int, num_heads: int, inf: float = 1e6,
+                 use_sdpa: bool = False, force_float32: bool = True) -> None:
         super().__init__()
         assert c_s % num_heads == 0
         self.c_s = c_s
         self.num_heads = num_heads
         self.head_dim = c_s // num_heads
         self.inf = inf
+        self.use_sdpa = use_sdpa
+        self.force_float32 = force_float32
 
         self.norm_s = nn.LayerNorm(c_s)
         self.proj_q = nn.Linear(c_s, c_s)
@@ -345,11 +349,8 @@ class AttentionPairBias(nn.Module):
         Parameters
         ----------
         s : Tensor (B, N, D_s)
-            Single / node representation.
         z : Tensor (B, N, N, D_z)
-            Pairwise representation.
         mask : Tensor (B, N)
-            Node mask (1 = valid, 0 = padding).
 
         Returns
         -------
@@ -367,12 +368,31 @@ class AttentionPairBias(nn.Module):
 
         g = self.proj_g(s).sigmoid()
 
-        with torch.autocast("cuda", enabled=False):
-            attn = torch.einsum("bihd,bjhd->bhij", q.float(), k.float())
-            attn = attn / (self.head_dim ** 0.5) + z_bias.float()
-            attn = attn + (1 - mask[:, None, None].float()) * -self.inf
-            attn = attn.softmax(dim=-1)
-            o = torch.einsum("bhij,bjhd->bihd", attn, v.float()).to(v.dtype)
+        if self.use_sdpa:
+            # Use F.scaled_dot_product_attention (flash/memory-efficient backends)
+            q_t = q.transpose(1, 2)  # (B, H, N, D)
+            k_t = k.transpose(1, 2)
+            v_t = v.transpose(1, 2)
+            mask_bias = (1 - mask[:, None, None].float()) * -self.inf
+            attn_mask = z_bias + mask_bias  # (B, H, N, N)
+            o = F.scaled_dot_product_attention(q_t, k_t, v_t, attn_mask=attn_mask)
+            o = torch.nan_to_num(o, nan=0.0)
+            o = o.transpose(1, 2)  # (B, N, H, D)
+        else:
+            # Original manual attention with optional float32 upcasting
+            ctx = torch.autocast("cuda", enabled=False) if self.force_float32 else nullcontext()
+            with ctx:
+                if self.force_float32:
+                    q_f, k_f, v_f, z_f = q.float(), k.float(), v.float(), z_bias.float()
+                else:
+                    q_f, k_f, v_f, z_f = q, k, v, z_bias
+                attn = torch.einsum("bihd,bjhd->bhij", q_f, k_f)
+                attn = attn / (self.head_dim ** 0.5) + z_f
+                attn = attn + (1 - mask[:, None, None].float()) * -self.inf
+                attn = attn.softmax(dim=-1)
+                o = torch.einsum("bhij,bjhd->bihd", attn, v_f)
+                if self.force_float32:
+                    o = o.to(v.dtype)
 
         o = o.reshape(B, -1, self.c_s)
         o = self.proj_o(g * o)
@@ -396,10 +416,11 @@ class OuterProductMean(nn.Module):
     ``mup.assert_hidden_size_inf`` (infinite fan-in, finite fan-out).
     """
 
-    def __init__(self, c_in: int, c_hidden: int, c_out: int) -> None:
+    def __init__(self, c_in: int, c_hidden: int, c_out: int, force_float32: bool = True) -> None:
         super().__init__()
         self.c_hidden = c_hidden
         self.c_out = c_out
+        self.force_float32 = force_float32
         self.norm = nn.LayerNorm(c_in)
         # _LinearNoMup avoids mup assertion for cross-track projections
         self.proj_a = _LinearNoMup(c_in, c_hidden, bias=False)
@@ -409,47 +430,23 @@ class OuterProductMean(nn.Module):
         _final_init(self.proj_o.bias)
 
     def forward(self, m: Tensor, mask: Tensor) -> Tensor:
-        """Memory-efficient outer product mean.
-
-        Instead of materialising the full outer product
-        ``(B, N, N, c_h²)`` (e.g. 1024 channels with c_h=32), we
-        decompose the output projection as two successive contractions:
-
-            temp[b,j,o,c]  = Σ_d  b[b,j,d] · W[o,c,d]   — O(N · c_out · c_h²)
-            z[b,i,j,o]     = Σ_c  a[b,i,c] · temp[b,j,o,c]  — O(N² · c_out · c_h)
-
-        Peak intermediate: ``(B, N, c_out, c_h)`` ≈ 25× smaller than
-        the naïve ``(B, N, N, c_h²)`` intermediate.
-
-        Parameters
-        ----------
-        m : Tensor (B, N, C_in)
-            Node features.
-        mask : Tensor (B, N)
-            Node mask (1 = valid, 0 = padding).
-
-        Returns
-        -------
-        Tensor (B, N, N, C_out)
-        """
+        """Memory-efficient outer product mean."""
         mask_2d = mask.unsqueeze(-1).to(m)
         m = self.norm(m)
         a = self.proj_a(m) * mask_2d  # (B, N, c_h)
         b = self.proj_b(m) * mask_2d
 
-        # Pairwise normalisation factor
         num_mask = (mask_2d.unsqueeze(2) * mask_2d.unsqueeze(1)).squeeze(-1).clamp(min=1)
 
-        # Factored projection: avoid (B, N, N, c_h²) intermediate
         W = self.proj_o.weight.view(self.c_out, self.c_hidden, self.c_hidden)
 
-        # Step 1: contract b with W along the second c_h dim
-        #   temp[b,j,o,c] = Σ_d b[b,j,d] · W[o,c,d]
-        temp = torch.einsum("bjd,ocd->bjoc", b.float(), W.float())  # (B, N, c_out, c_h)
+        if self.force_float32:
+            a_c, b_c, W_c = a.float(), b.float(), W.float()
+        else:
+            a_c, b_c, W_c = a, b, W
 
-        # Step 2: contract a with temp along the first c_h dim
-        #   z[b,i,j,o] = Σ_c a[b,i,c] · temp[b,j,o,c]
-        z = torch.einsum("bic,bjoc->bijo", a.float(), temp)          # (B, N, N, c_out)
+        temp = torch.einsum("bjd,ocd->bjoc", b_c, W_c)
+        z = torch.einsum("bic,bjoc->bijo", a_c, temp)
 
         z = z / num_mask.unsqueeze(-1)
         z = z.to(m) + self.proj_o.bias
@@ -532,6 +529,12 @@ class PairformerLayerPyg(BaseGraphModule):
         hidden_dim_scaling: float = 4.0,
         opm_hidden: int = 32,
         use_checkpoint: bool = True,
+        # ---- Speed optimizations (configurable via layer_kwargs) ----
+        compile_mode: str = "none",
+        use_sdpa_attn_pair_bias: bool = False,
+        tri_mul_mode: str = "einsum",
+        force_float32_einsums: bool = True,
+        parallel_pair_ops: bool = False,
         **kwargs,
     ):
         super().__init__(
@@ -548,13 +551,17 @@ class PairformerLayerPyg(BaseGraphModule):
         self.out_dim_edges = out_dim_edges
         self.pair_dropout = pair_dropout
         self.use_checkpoint = use_checkpoint
+        self.parallel_pair_ops = parallel_pair_ops
 
         # ---- Pair track: outer-product mean initialization ----
-        self.opm = OuterProductMean(in_dim, opm_hidden, pair_dim)
+        self.opm = OuterProductMean(in_dim, opm_hidden, pair_dim,
+                                    force_float32=force_float32_einsums)
 
         # ---- Pair track: triangle updates ----
-        self.tri_mul_out = TriangleMultiplicationOutgoing(pair_dim)
-        self.tri_mul_in = TriangleMultiplicationIncoming(pair_dim)
+        self.tri_mul_out = TriangleMultiplicationOutgoing(
+            pair_dim, tri_mul_mode=tri_mul_mode, force_float32=force_float32_einsums)
+        self.tri_mul_in = TriangleMultiplicationIncoming(
+            pair_dim, tri_mul_mode=tri_mul_mode, force_float32=force_float32_einsums)
 
         # ---- Pair track: triangle attention ----
         self.tri_att_start = TriangleAttention(
@@ -568,7 +575,9 @@ class PairformerLayerPyg(BaseGraphModule):
         self.transition_z = Transition(pair_dim, int(pair_dim * hidden_dim_scaling))
 
         # ---- Single track: attention with pair bias ----
-        self.attn = AttentionPairBias(in_dim, pair_dim, num_heads)
+        self.attn = AttentionPairBias(in_dim, pair_dim, num_heads,
+                                      use_sdpa=use_sdpa_attn_pair_bias,
+                                      force_float32=force_float32_einsums)
 
         # ---- Single track: transition MLP ----
         self.transition_s = Transition(in_dim, int(in_dim * hidden_dim_scaling))
@@ -579,6 +588,12 @@ class PairformerLayerPyg(BaseGraphModule):
         else:
             self.out_proj = nn.Identity()
 
+        # ---- Apply torch.compile if requested ----
+        if compile_mode == "pair_track":
+            self._pair_track_ops = torch.compile(self._pair_track_ops, mode="reduce-overhead")
+        elif compile_mode == "full":
+            self.forward = torch.compile(self.forward, mode="reduce-overhead")
+
     def _pair_track_ops(self, z: Tensor, pair_mask: Tensor) -> Tensor:
         """All pair-track operations, isolated for gradient checkpointing.
 
@@ -587,18 +602,37 @@ class PairformerLayerPyg(BaseGraphModule):
         activations (triangle mult/attn tensors) are freed during
         forward and recomputed during backward — reducing activation
         memory from O(L × per_layer) to O(per_layer).
+
+        When ``parallel_pair_ops=True``, triangle multiplications and
+        triangle attentions read the same z (parallel residuals) instead
+        of chaining sequentially. This is a known AlphaFold/OpenFold
+        optimization — mathematically different but empirically equivalent.
         """
-        dmask = _get_dropout_mask(self.pair_dropout, z, self.training)
-        z = z + dmask * self.tri_mul_out(z, mask=pair_mask)
+        if self.parallel_pair_ops:
+            # Parallel: both tri_mul read the same z
+            dmask1 = _get_dropout_mask(self.pair_dropout, z, self.training)
+            dmask2 = _get_dropout_mask(self.pair_dropout, z, self.training)
+            z = z + dmask1 * self.tri_mul_out(z, mask=pair_mask) \
+                  + dmask2 * self.tri_mul_in(z, mask=pair_mask)
 
-        dmask = _get_dropout_mask(self.pair_dropout, z, self.training)
-        z = z + dmask * self.tri_mul_in(z, mask=pair_mask)
+            # Parallel: both tri_att read the same z
+            dmask3 = _get_dropout_mask(self.pair_dropout, z, self.training)
+            dmask4 = _get_dropout_mask(self.pair_dropout, z, self.training, columnwise=True)
+            z = z + dmask3 * self.tri_att_start(z, mask=pair_mask) \
+                  + dmask4 * self.tri_att_end(z, mask=pair_mask)
+        else:
+            # Sequential: each op reads the z updated by the previous one (original)
+            dmask = _get_dropout_mask(self.pair_dropout, z, self.training)
+            z = z + dmask * self.tri_mul_out(z, mask=pair_mask)
 
-        dmask = _get_dropout_mask(self.pair_dropout, z, self.training)
-        z = z + dmask * self.tri_att_start(z, mask=pair_mask)
+            dmask = _get_dropout_mask(self.pair_dropout, z, self.training)
+            z = z + dmask * self.tri_mul_in(z, mask=pair_mask)
 
-        dmask = _get_dropout_mask(self.pair_dropout, z, self.training, columnwise=True)
-        z = z + dmask * self.tri_att_end(z, mask=pair_mask)
+            dmask = _get_dropout_mask(self.pair_dropout, z, self.training)
+            z = z + dmask * self.tri_att_start(z, mask=pair_mask)
+
+            dmask = _get_dropout_mask(self.pair_dropout, z, self.training, columnwise=True)
+            z = z + dmask * self.tri_att_end(z, mask=pair_mask)
 
         z = z + self.transition_z(z)
         return z
