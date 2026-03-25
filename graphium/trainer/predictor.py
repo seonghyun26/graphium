@@ -365,6 +365,11 @@ class PredictorModule(lightning.LightningModule):
             multitask_handling=self.multitask_handling,
         )
 
+        # Collect MoE auxiliary losses from any MoELayer modules in the model
+        for module in self.model.modules():
+            if hasattr(module, "aux_loss") and isinstance(module.aux_loss, torch.Tensor) and module.aux_loss.item() > 0:
+                loss = loss + module.aux_loss.to(loss.device)
+
         device = "cpu" if to_cpu else None
         for task in preds:
             task_specific_norm = self.task_norms[task] if self.task_norms is not None else None

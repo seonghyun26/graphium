@@ -31,7 +31,7 @@ from torch.utils.checkpoint import checkpoint as _checkpoint
 from torch_geometric.data import Batch
 
 from graphium.nn.base_graph_layer import BaseGraphModule
-from graphium.nn.base_layers import MLP
+from graphium.nn.base_layers import MLP, MoELayer
 from graphium.ipu.to_dense_batch import to_dense_batch, to_sparse_batch
 from graphium.utils.decorators import classproperty
 
@@ -535,6 +535,10 @@ class PairformerLayerPyg(BaseGraphModule):
         tri_mul_mode: str = "einsum",
         force_float32_einsums: bool = True,
         parallel_pair_ops: bool = False,
+        # ---- Mixture-of-Experts ----
+        moe_num_experts: int = 0,
+        moe_top_k: int = 2,
+        moe_aux_loss_coeff: float = 0.01,
         **kwargs,
     ):
         super().__init__(
@@ -579,8 +583,21 @@ class PairformerLayerPyg(BaseGraphModule):
                                       use_sdpa=use_sdpa_attn_pair_bias,
                                       force_float32=force_float32_einsums)
 
-        # ---- Single track: transition MLP ----
-        self.transition_s = Transition(in_dim, int(in_dim * hidden_dim_scaling))
+        # ---- Single track: transition MLP (or MoE) ----
+        s_hidden = int(in_dim * hidden_dim_scaling)
+        if moe_num_experts > 0:
+            self.transition_s = MoELayer(
+                expert_cls=Transition,
+                expert_kwargs={"dim": in_dim, "hidden": s_hidden},
+                router_dim=in_dim,
+                num_experts=moe_num_experts,
+                top_k=moe_top_k,
+                aux_loss_coeff=moe_aux_loss_coeff,
+            )
+            self.use_moe = True
+        else:
+            self.transition_s = Transition(in_dim, s_hidden)
+            self.use_moe = False
 
         # ---- Output projection (if in_dim != out_dim) ----
         if in_dim != out_dim:
@@ -682,7 +699,10 @@ class PairformerLayerPyg(BaseGraphModule):
 
         # ---- Single track updates ----
         s_dense = s_dense + self.attn(s_dense, z, node_mask)
-        s_dense = s_dense + self.transition_s(s_dense)
+        if self.use_moe:
+            s_dense = s_dense + self.transition_s(s_dense, node_mask=node_mask)
+        else:
+            s_dense = s_dense + self.transition_s(s_dense)
 
         # ---- Output projection ----
         s_dense = self.out_proj(s_dense)

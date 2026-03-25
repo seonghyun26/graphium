@@ -21,7 +21,7 @@ constants:
 
 predictor:
   optim_kwargs:
-    lr: 4.e-5
+    lr: 1.e-4
 
 finetuning:
   task: ${constants.task}
@@ -34,7 +34,7 @@ finetuning:
   new_out_dim: 8
   added_depth: 2
   unfreeze_pretrained_depth: 0
-  epoch_unfreeze_all: none
+  epoch_unfreeze_all: 50
   finetuning_head:
     task: ${constants.task}
     previous_module: task_heads
