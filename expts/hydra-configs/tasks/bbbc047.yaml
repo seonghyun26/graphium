@@ -1,0 +1,44 @@
+# @package _global_
+# BBBC047 (JUMP CPCNN) — U2OS Cell Painting morphological embeddings.
+# 109,645 compounds with 672-dim CPCNN embeddings (EfficientNet-B0, Moshkov et al. 2024).
+# Data source: JUMP Cell Painting consortium (cpg0016), Cell Painting Gallery on AWS.
+
+datamodule:
+  args:
+    task_specific_args:
+      bbbc047:
+        df_path: /home/shpark/prj-molrepr/data/bbbc047/bbbc047_smiles_embeddings.csv
+        smiles_col: "SMILES"
+        label_cols: feature_*
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
+
+architecture:
+  task_heads:
+    bbbc047:
+      task_level: graph
+      out_dim: 672
+      hidden_dims: 128
+      depth: 2
+      activation: relu
+      last_activation: none
+
+predictor:
+  loss_fun:
+    bbbc047: mae_ipu
+  metrics_on_progress_bar:
+    bbbc047: ['mae']
+  metrics_on_training_set:
+    bbbc047: ['mae']
+
+metrics:
+  bbbc047:
+  - name: mae
+    metric: mae_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu

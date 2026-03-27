@@ -65,6 +65,10 @@ if [[ -z "${PRETRAIN_DATASET:-}" ]]; then
         PRETRAIN_DATASET="toymix_rxrx3_dti"
     elif [[ "${CKPT_LOWER}" == *"toymix_rxrx3"* || "${CKPT_LOWER}" == *"toymix-rxrx3"* ]]; then
         PRETRAIN_DATASET="toymix_rxrx3"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti_10k_filtered"* || "${CKPT_LOWER}" == *"toymix-dti-10k-filtered"* ]]; then
+        PRETRAIN_DATASET="toymix_dti_10k_filtered"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti_filtered"* || "${CKPT_LOWER}" == *"toymix-dti-filtered"* ]]; then
+        PRETRAIN_DATASET="toymix_dti_filtered"
     elif [[ "${CKPT_LOWER}" == *"toymix_dti"* || "${CKPT_LOWER}" == *"toymix-dti"* ]]; then
         PRETRAIN_DATASET="toymix_dti"
     elif [[ "${CKPT_LOWER}" == *"rxrx3_dti"* || "${CKPT_LOWER}" == *"rxrx3-dti"* ]]; then
@@ -73,10 +77,14 @@ if [[ -z "${PRETRAIN_DATASET:-}" ]]; then
         PRETRAIN_DATASET="largemix_rxrx3"
     elif [[ "${CKPT_LOWER}" == *"largemix_rxrx3_dti"* || "${CKPT_LOWER}" == *"largemix-rxrx3-dti"* ]]; then
         PRETRAIN_DATASET="largemix_rxrx3_dti"
+    elif [[ "${CKPT_LOWER}" == *"largemix_dti_filtered"* || "${CKPT_LOWER}" == *"largemix-dti-filtered"* ]]; then
+        PRETRAIN_DATASET="largemix_dti_filtered"
     elif [[ "${CKPT_LOWER}" == *"largemix_dti"* || "${CKPT_LOWER}" == *"largemix-dti"* ]]; then
         PRETRAIN_DATASET="largemix_dti"
     elif [[ "${CKPT_LOWER}" == *"largemix"* || "${CKPT_LOWER}" == *"large-dataset"* ]]; then
         PRETRAIN_DATASET="largemix"
+    elif [[ "${CKPT_LOWER}" == *"toymix_bbbc047"* || "${CKPT_LOWER}" == *"toymix-bbbc047"* ]]; then
+        PRETRAIN_DATASET="toymix_bbbc047"
     elif [[ "${CKPT_LOWER}" == *"toymix"* || "${CKPT_LOWER}" == *"small-dataset"* ]]; then
         PRETRAIN_DATASET="toymix"
     elif [[ "${CKPT_LOWER}" == *"rxrx3"* ]]; then
@@ -98,10 +106,14 @@ if [[ -z "${FINETUNING_CONFIG:-}" ]]; then
         toymix_rxrx3)   FINETUNING_CONFIG="admet_toymix_rxrx3" ;;     # sub_module: rxrx3
         dti)            FINETUNING_CONFIG="admet_dti" ;;               # sub_module: dti
         largemix_dti)   FINETUNING_CONFIG="admet_largemix_dti" ;;      # sub_module: dti
+        largemix_dti_filtered) FINETUNING_CONFIG="admet_largemix_dti_filtered" ;; # sub_module: dti
         toymix_dti)     FINETUNING_CONFIG="admet_toymix_dti" ;;        # sub_module: dti
+        toymix_dti_10k_filtered) FINETUNING_CONFIG="admet_toymix_dti_10k_filtered" ;; # sub_module: dti
+        toymix_dti_filtered) FINETUNING_CONFIG="admet_toymix_dti_filtered" ;; # sub_module: dti
         rxrx3_dti)      FINETUNING_CONFIG="admet_rxrx3_dti" ;;       # sub_module: dti
         toymix_rxrx3_dti) FINETUNING_CONFIG="admet_toymix_rxrx3_dti" ;;  # sub_module: dti
         largemix_rxrx3_dti) FINETUNING_CONFIG="admet_largemix_rxrx3_dti" ;; # sub_module: dti
+        toymix_bbbc047) FINETUNING_CONFIG="admet_toymix_bbbc047" ;; # sub_module: bbbc047
         *)              FINETUNING_CONFIG="admet" ;;
     esac
 fi
@@ -135,6 +147,7 @@ for task in "${ADMET_TASKS[@]}"; do
         ++finetuning.added_depth=${ADDED_DEPTH} \
         ++architecture.task_heads.${task}.hidden_dims=${FINETUNE_DIM} \
         ++trainer.model_checkpoint.save_last=False \
+        ++trainer.model_checkpoint.dirpath=models_checkpoints/admet/${PRETRAIN_DATASET}/${MODEL}/${task}/ \
         ${SUB_MODULE:+++finetuning.sub_module_from_pretrained=${SUB_MODULE}} \
         ${EXTRA_FLAGS:-} \
     || echo "WARN: task ${task} failed, continuing..."

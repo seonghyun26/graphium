@@ -1,0 +1,13 @@
+# @package _global_
+
+constants:
+  name: toymix_bbbc047_gpspp
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_bbbc047/
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_bbbc047/gpspp/${now:%Y-%m-%d_%H-%M-%S}/

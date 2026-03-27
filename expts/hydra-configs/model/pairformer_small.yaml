@@ -1,0 +1,34 @@
+# @package _global_
+# Pairformer Small (~7M parameters)
+# Lightweight config for quick experiments and baselines.
+
+defaults:
+  - pairformer
+
+constants:
+  norm: layer_norm
+
+architecture:
+  pre_nn:
+    out_dim: 192
+    hidden_dims: 192
+
+  gnn:
+    in_dim: 192
+    out_dim: 192
+    hidden_dims: 192
+    depth: 8
+    layer_kwargs:
+      pair_dim: 64
+      num_heads: 4               # 192/4 = 48 head dim
+      pairwise_head_width: 32
+      pairwise_num_heads: 4
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      use_checkpoint: true
+
+  graph_output_nn:
+    graph:
+      hidden_dims: 192
+      out_dim: 256

@@ -1,0 +1,48 @@
+# @package _global_
+#
+# ADMET fine-tuning from a ToyMix+DTI_10K_filtered-pretrained model.
+# Uses dti task head as the sub_module_from_pretrained.
+
+defaults:
+  - override /tasks/loss_metrics_datamodule: admet
+
+constants:
+  task: lipophilicity_astrazeneca
+  name: finetuning_${constants.task}_toymix_dti_10k_filtered
+  wandb:
+    name: ${constants.name}
+    project: ${constants.task}
+    entity: multitask-gnn
+    save_dir: logs/${constants.task}
+  seed: 42
+  max_epochs: 100
+  data_dir: expts/data/admet/${constants.task}
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/admet/${constants.task}
+
+predictor:
+  optim_kwargs:
+    lr: 1.e-4
+
+finetuning:
+  task: ${constants.task}
+  level: graph
+  pretrained_model: dummy-pretrained-model
+  finetuning_module: task_heads
+  sub_module_from_pretrained: dti
+  new_sub_module: ${constants.task}
+  drop_depth: 1
+  new_out_dim: 8
+  added_depth: 2
+  unfreeze_pretrained_depth: 0
+  epoch_unfreeze_all: 50
+  finetuning_head:
+    task: ${constants.task}
+    previous_module: task_heads
+    incoming_level: graph
+    model_type: mlp
+    in_dim: 8
+    out_dim: 1
+    hidden_dims: 8
+    depth: 2
+    last_layer_is_readout: true

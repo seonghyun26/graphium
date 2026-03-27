@@ -51,13 +51,28 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-16}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
+    pairformer_small)
+        DIM=${DIM:-192}
+        GNN_DEPTH=${GNN_DEPTH:-8}
+        BATCH_SIZE=${BATCH_SIZE:-32}
+        ;;
+    pairformer_medium)
+        DIM=${DIM:-256}
+        GNN_DEPTH=${GNN_DEPTH:-12}
+        BATCH_SIZE=${BATCH_SIZE:-32}
+        ;;
+    pairformer_large)
+        DIM=${DIM:-384}
+        GNN_DEPTH=${GNN_DEPTH:-16}
+        BATCH_SIZE=${BATCH_SIZE:-32}
+        ;;
     pairformer_boltz)
         DIM=${DIM:-384}
         GNN_DEPTH=${GNN_DEPTH:-48}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
     *)
-        echo "Error: unknown model '${MODEL}'. Choose from: gcn, mpnn, gpspp, gpspp_800M, pairformer, pairformer_boltz"
+        echo "Error: unknown model '${MODEL}'."
         exit 1
         ;;
 esac
@@ -96,14 +111,30 @@ case "${DATASET}" in
         TRAINING=dti
         ARCHITECTURE=largemix
         ;;
+    dti_filtered)
+        TASKS=dti_filtered
+        TRAINING=dti_filtered
+        ARCHITECTURE=largemix
+        ;;
     largemix_dti)
         TASKS=largemix_dti
         TRAINING=largemix_dti
         ARCHITECTURE=largemix
         ;;
+    largemix_dti_filtered)
+        TASKS=largemix_dti_filtered
+        TRAINING=largemix_dti_filtered
+        ARCHITECTURE=largemix
+        ;;
     toymix_dti)
         TASKS=toymix_dti
         TRAINING=toymix_dti
+        ARCHITECTURE=toymix
+        [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
+        ;;
+    toymix_dti_filtered)
+        TASKS=toymix_dti_filtered
+        TRAINING=toymix_dti_filtered
         ARCHITECTURE=toymix
         [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
         ;;
@@ -123,6 +154,33 @@ case "${DATASET}" in
         TRAINING=rxrx3_dti
         ARCHITECTURE=largemix
         ;;
+    bbbc047)
+        TASKS=bbbc047
+        TRAINING=bbbc047
+        ARCHITECTURE=largemix
+        ;;
+    toymix_bbbc047)
+        TASKS=toymix_bbbc047
+        TRAINING=toymix_bbbc047
+        ARCHITECTURE=toymix
+        [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
+        ;;
+    dti_filtered)
+        TASKS=dti_filtered
+        TRAINING=dti
+        ARCHITECTURE=largemix
+        ;;
+    dti_10k_filtered)
+        TASKS=dti_10k_filtered
+        TRAINING=dti_10k_filtered
+        ARCHITECTURE=largemix
+        ;;
+    toymix_dti_10k_filtered)
+        TASKS=toymix_dti_10k_filtered
+        TRAINING=toymix_dti_10k_filtered
+        ARCHITECTURE=toymix
+        [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
+        ;;
     *)
         echo "Error: unknown dataset '${DATASET}'."
         exit 1
@@ -137,7 +195,7 @@ fi
 # Cap batch size for DTI datasets (2560-dim output head needs more memory)
 # Only applies when BATCH_SIZE was explicitly set; otherwise config handles it.
 if [[ -n "${_USER_BATCH_SIZE}" ]]; then
-    if [[ "${DATASET}" == "dti" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" ]]; then
+    if [[ "${DATASET}" == "dti" || "${DATASET}" == "dti_filtered" || "${DATASET}" == "dti_10k_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" ]]; then
         (( BATCH_SIZE > 128 )) && BATCH_SIZE=128
     fi
 fi
@@ -150,18 +208,21 @@ case "${MODEL}" in
     mpnn)       DIM_FLAGS=$(mpnn_dim_flags "${DIM}") ;;
     gpspp)      DIM_FLAGS=$(gpspp_dim_flags "${DIM}") ;;
     gpspp_800M) DIM_FLAGS="" ;;  # gpspp_800M sets dims in model config
-    pairformer)      DIM_FLAGS="" ;;  # pairformer uses config defaults
-    pairformer_boltz) DIM_FLAGS="" ;;  # pairformer_boltz sets dims in model config
+    pairformer)        DIM_FLAGS="" ;;  # pairformer uses config defaults
+    pairformer_small)  DIM_FLAGS="" ;;  # dims set in model config
+    pairformer_medium) DIM_FLAGS="" ;;  # dims set in model config
+    pairformer_large)  DIM_FLAGS="" ;;  # dims set in model config
+    pairformer_boltz)  DIM_FLAGS="" ;;  # dims set in model config
 esac
 
 # ── Optional: sample_size for dataset size ablation ──────────────────────────
 SAMPLE_FLAGS=""
 if [[ -n "${SAMPLE_SIZE:-}" ]]; then
-    if [[ "${DATASET}" == "toymix" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" ]]; then
+    if [[ "${DATASET}" == "toymix" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_rxrx3_dti" ]]; then
         for t in qm9 tox21 zinc; do
             SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.${t}.sample_size=${SAMPLE_SIZE}"
         done
-    elif [[ "${DATASET}" == "largemix" || "${DATASET}" == "largemix_rxrx3" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_rxrx3_dti" ]]; then
+    elif [[ "${DATASET}" == "largemix" || "${DATASET}" == "largemix_rxrx3" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "largemix_rxrx3_dti" ]]; then
         for t in l1000_vcap l1000_mcf7 pcba_1328 pcqm4m_g25 pcqm4m_n4; do
             SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.${t}.sample_size=${SAMPLE_SIZE}"
         done
@@ -169,7 +230,7 @@ if [[ -n "${SAMPLE_SIZE:-}" ]]; then
     if [[ "${DATASET}" == "rxrx3" || "${DATASET}" == "largemix_rxrx3" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.rxrx3.sample_size=${SAMPLE_SIZE}"
     fi
-    if [[ "${DATASET}" == "dti" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" ]]; then
+    if [[ "${DATASET}" == "dti" || "${DATASET}" == "dti_filtered" || "${DATASET}" == "dti_10k_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.dti.sample_size=${SAMPLE_SIZE}"
     fi
 fi

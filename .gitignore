@@ -203,3 +203,6 @@ dmypy.json
 *.toml
 
 autoresearch/
+
+*.DS_Store
+*.tab
