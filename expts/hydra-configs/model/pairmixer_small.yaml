@@ -1,0 +1,33 @@
+# @package _global_
+# PairMixer small configuration matching pairformer_small dimensions
+#
+# Same dimensions as pairformer_small (D_s=192, D_z=64, depth=8)
+# but with triangle attention and pair-biased attention removed.
+
+defaults:
+  - pairmixer
+
+constants:
+  norm: layer_norm
+
+architecture:
+  pre_nn:
+    out_dim: 192
+    hidden_dims: 192
+
+  gnn:
+    in_dim: 192
+    out_dim: 192
+    hidden_dims: 192
+    depth: 8
+    layer_kwargs:
+      pair_dim: 64
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      use_checkpoint: true
+
+  graph_output_nn:
+    graph:
+      hidden_dims: 192
+      out_dim: 256

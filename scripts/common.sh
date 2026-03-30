@@ -17,18 +17,23 @@ WANDB_ENTITY=${WANDB_ENTITY:-eddy26}
 WANDB_PROJECT=${WANDB_PROJECT:-graphium}
 
 # ── ADMET task list (22 TDC benchmark tasks) ─────────────────────────────────
-ADMET_TASKS=(
-    # Absorption
-    caco2_wang hia_hou pgp_broccatelli bioavailability_ma
-    lipophilicity_astrazeneca solubility_aqsoldb bbb_martins ppbr_az vdss_lombardo
-    # Metabolism
-    cyp2d6_veith cyp3a4_veith cyp2c9_veith
-    cyp2c9_substrate_carbonmangels cyp2d6_substrate_carbonmangels cyp3a4_substrate_carbonmangels
-    # Excretion
-    half_life_obach clearance_hepatocyte_az clearance_microsome_az
-    # Toxicity
-    ld50_zhu herg ames dili
-)
+# Override by setting ADMET_TASKS_OVERRIDE (space-separated) before sourcing.
+if [[ -n "${ADMET_TASKS_OVERRIDE:-}" ]]; then
+    read -ra ADMET_TASKS <<< "${ADMET_TASKS_OVERRIDE}"
+else
+    ADMET_TASKS=(
+        # Absorption
+        caco2_wang hia_hou pgp_broccatelli bioavailability_ma
+        lipophilicity_astrazeneca solubility_aqsoldb bbb_martins ppbr_az vdss_lombardo
+        # Metabolism
+        cyp2d6_veith cyp3a4_veith cyp2c9_veith
+        cyp2c9_substrate_carbonmangels cyp2d6_substrate_carbonmangels cyp3a4_substrate_carbonmangels
+        # Excretion
+        half_life_obach clearance_hepatocyte_az clearance_microsome_az
+        # Toxicity
+        ld50_zhu herg ames dili
+    )
+fi
 
 # ── Helper: common W&B flags ─────────────────────────────────────────────────
 wandb_flags() {

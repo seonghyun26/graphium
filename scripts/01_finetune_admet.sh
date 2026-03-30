@@ -52,6 +52,9 @@ case "${MODEL}" in
     pairformer_boltz)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
+    pairformer_small|pairformer_medium|pairformer_large)
+        DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
+        ;;
     *)
         echo "Error: unknown model '${MODEL}'."
         exit 1
@@ -83,6 +86,8 @@ if [[ -z "${PRETRAIN_DATASET:-}" ]]; then
         PRETRAIN_DATASET="largemix_dti"
     elif [[ "${CKPT_LOWER}" == *"largemix"* || "${CKPT_LOWER}" == *"large-dataset"* ]]; then
         PRETRAIN_DATASET="largemix"
+    elif [[ "${CKPT_LOWER}" == *"toymix_bbbc047_filtered"* || "${CKPT_LOWER}" == *"toymix-bbbc047-filtered"* ]]; then
+        PRETRAIN_DATASET="toymix_bbbc047_filtered"
     elif [[ "${CKPT_LOWER}" == *"toymix_bbbc047"* || "${CKPT_LOWER}" == *"toymix-bbbc047"* ]]; then
         PRETRAIN_DATASET="toymix_bbbc047"
     elif [[ "${CKPT_LOWER}" == *"toymix"* || "${CKPT_LOWER}" == *"small-dataset"* ]]; then
@@ -114,6 +119,7 @@ if [[ -z "${FINETUNING_CONFIG:-}" ]]; then
         toymix_rxrx3_dti) FINETUNING_CONFIG="admet_toymix_rxrx3_dti" ;;  # sub_module: dti
         largemix_rxrx3_dti) FINETUNING_CONFIG="admet_largemix_rxrx3_dti" ;; # sub_module: dti
         toymix_bbbc047) FINETUNING_CONFIG="admet_toymix_bbbc047" ;; # sub_module: bbbc047
+        toymix_bbbc047_filtered) FINETUNING_CONFIG="admet_toymix_bbbc047" ;; # sub_module: bbbc047 (same finetuning config)
         *)              FINETUNING_CONFIG="admet" ;;
     esac
 fi

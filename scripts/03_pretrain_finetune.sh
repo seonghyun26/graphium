@@ -61,6 +61,7 @@ case "${DATASET}" in
     dti_10k_filtered)          CKPT_SLUG="dti_10k_filtered" ;;
     toymix_dti_filtered)       CKPT_SLUG="toymix-dti-filtered" ;;
     toymix_bbbc047)            CKPT_SLUG="toymix_bbbc047" ;;
+    toymix_bbbc047_filtered)   CKPT_SLUG="toymix_bbbc047_filtered" ;;
     bbbc047)                   CKPT_SLUG="bbbc047" ;;
     *)                         CKPT_SLUG="${DATASET}" ;;
 esac

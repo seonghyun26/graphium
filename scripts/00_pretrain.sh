@@ -71,6 +71,21 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-48}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
+    pairmixer)
+        DIM=${DIM:-256}
+        GNN_DEPTH=${GNN_DEPTH:-16}
+        BATCH_SIZE=${BATCH_SIZE:-32}
+        ;;
+    pairmixer_small)
+        DIM=${DIM:-192}
+        GNN_DEPTH=${GNN_DEPTH:-8}
+        BATCH_SIZE=${BATCH_SIZE:-32}
+        ;;
+    pairmixer_boltz)
+        DIM=${DIM:-384}
+        GNN_DEPTH=${GNN_DEPTH:-48}
+        BATCH_SIZE=${BATCH_SIZE:-32}
+        ;;
     *)
         echo "Error: unknown model '${MODEL}'."
         exit 1
@@ -165,6 +180,12 @@ case "${DATASET}" in
         ARCHITECTURE=toymix
         [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
         ;;
+    toymix_bbbc047_filtered)
+        TASKS=toymix_bbbc047_filtered
+        TRAINING=toymix_bbbc047_filtered
+        ARCHITECTURE=toymix
+        [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
+        ;;
     dti_filtered)
         TASKS=dti_filtered
         TRAINING=dti
@@ -213,6 +234,9 @@ case "${MODEL}" in
     pairformer_medium) DIM_FLAGS="" ;;  # dims set in model config
     pairformer_large)  DIM_FLAGS="" ;;  # dims set in model config
     pairformer_boltz)  DIM_FLAGS="" ;;  # dims set in model config
+    pairmixer)         DIM_FLAGS="" ;;  # dims set in model config
+    pairmixer_small)   DIM_FLAGS="" ;;  # dims set in model config
+    pairmixer_boltz)   DIM_FLAGS="" ;;  # dims set in model config
 esac
 
 # ── Optional: sample_size for dataset size ablation ──────────────────────────

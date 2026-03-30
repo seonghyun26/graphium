@@ -11,8 +11,8 @@ constants:
 
 datamodule:
   args:
-    batch_size_training: 4
-    batch_size_inference: 4
+    batch_size_training: 2
+    batch_size_inference: 2
     dataloading_from: ram
     num_workers: 0           # avoid CoW memory duplication with ram loading
     persistent_workers: false
@@ -23,4 +23,4 @@ trainer:
     dirpath: models_checkpoints/toymix-dti-filtered/pairformer_boltz/${now:%Y-%m-%d_%H-%M-%S}/
   trainer:
     precision: bf16-mixed  # Pairformer triangle ops overflow fp16; bf16 has float32-range exponents
-    accumulate_grad_batches: 2  # effective batch size = 8
+    accumulate_grad_batches: 4  # effective batch size = 8

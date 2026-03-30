@@ -1,135 +1,92 @@
 #!/usr/bin/env bash
-# Benchmark Pairformer model sizes: pretrain on toymix, finetune on 2 ADMET tasks.
+# Benchmark Pairformer model sizes: train from scratch on 5 ADMET tasks.
 #
-# Compares: pairformer_small (7M), pairformer_medium (17M),
-#           pairformer_large (52M), pairformer_boltz (155M)
+# Compares: pairformer (5M), pairformer_small (7M),
+#           pairformer_medium (17M), pairformer_large (52M)
 #
 # Usage:
 #   bash scripts/09_benchmark_pairformer_sizes.sh [gpu_id]
 #
-# Each model: pretrain 50 epochs on toymix → finetune on caco2_wang + solubility_aqsoldb
 # Results written to results/pairformer_size_benchmark.tsv
 
 source "$(dirname "$0")/common.sh"
 
 DEVICE=${1:-${DEVICE}}
-PRETRAIN_EPOCHS=50
-FT_TASKS=("caco2_wang" "solubility_aqsoldb")
 RESULTS_FILE="${RESULTS_DIR}/pairformer_size_benchmark.tsv"
 
-MODELS=("pairformer_small" "pairformer_medium" "pairformer_large")
-# Uncomment to include boltz (very slow):
-# MODELS=("pairformer_small" "pairformer_medium" "pairformer_large" "pairformer_boltz")
+MODELS=("pairformer" "pairformer_small" "pairformer_medium" "pairformer_large")
 
-echo "=== Pairformer Size Benchmark ==="
+# 5 tasks: 3 regression + 2 classification (diverse ADMET categories)
+BENCH_TASKS=("caco2_wang" "solubility_aqsoldb" "half_life_obach" "pgp_broccatelli" "herg")
+
+echo "=== Pairformer Size Benchmark (scratch ADMET) ==="
 echo "Models: ${MODELS[*]}"
-echo "Pretrain: toymix, ${PRETRAIN_EPOCHS} epochs"
-echo "Finetune: ${FT_TASKS[*]}"
-echo "GPU: ${DEVICE}"
+echo "Tasks:  ${BENCH_TASKS[*]}"
+echo "GPU:    ${DEVICE}"
 echo ""
 
-# Write TSV header
+# Write TSV header only if file doesn't exist or is empty
 mkdir -p "$(dirname "${RESULTS_FILE}")"
-echo -e "model\tparams\tpretrain_time_s\tft_task\tft_mae\tft_pearson\tft_time_s" > "${RESULTS_FILE}"
+if [[ ! -s "${RESULTS_FILE}" ]]; then
+    echo -e "model\ttask\tmae_or_auroc\tpearson\ttime_s" > "${RESULTS_FILE}"
+fi
 
 for MODEL in "${MODELS[@]}"; do
     echo "============================================================"
     echo "Model: ${MODEL}"
     echo "============================================================"
 
-    CKPT_DIR="models_checkpoints/benchmark/${MODEL}_$(date +%Y%m%d_%H%M%S)"
-    TAGS="['${MODEL}','benchmark','toymix']"
-
-    # ── Phase 1: Pretrain ────────────────────────────────────────────
-    echo "--- Pretraining ${MODEL} on toymix (${PRETRAIN_EPOCHS} epochs) ---"
-    PT_START=$(date +%s)
-
-    CUDA_VISIBLE_DEVICES=${DEVICE} graphium-train \
-        model=${MODEL} \
-        accelerator=gpu \
-        tasks=toymix \
-        training=toymix \
-        architecture=toymix \
-        $(wandb_flags "${TAGS}") \
-        ++constants.norm=layer_norm \
-        ++constants.max_epochs=${PRETRAIN_EPOCHS} \
-        ++constants.raise_train_error=true \
-        ++trainer.trainer.precision=bf16-mixed \
-        ++trainer.trainer.check_val_every_n_epoch=10 \
-        ++trainer.model_checkpoint.dirpath=${CKPT_DIR} \
-        ++trainer.model_checkpoint.save_last=True \
-        ${EXTRA_FLAGS:-} \
-    || { echo "WARN: pretrain ${MODEL} failed"; continue; }
-
-    PT_END=$(date +%s)
-    PT_TIME=$((PT_END - PT_START))
-
-    # Find checkpoint
-    CKPT=$(find "${CKPT_DIR}" -name "last.ckpt" -type f 2>/dev/null | head -1)
-    if [[ -z "${CKPT}" ]]; then
-        echo "ERROR: No checkpoint for ${MODEL}"
-        continue
-    fi
-    echo "Checkpoint: ${CKPT} (${PT_TIME}s)"
-
-    # Count params from wandb log
-    PARAMS=$(grep -r "Total params" "$(dirname "${CKPT}")/../" 2>/dev/null | grep -oP '[\d.]+' | head -1)
-    PARAMS=${PARAMS:-"?"}
-
-    # ── Phase 2: Finetune on each ADMET task ─────────────────────────
-    for FT_TASK in "${FT_TASKS[@]}"; do
-        echo "--- Finetuning ${MODEL} on ${FT_TASK} ---"
-        FT_TAGS="['${MODEL}','benchmark','finetune','${FT_TASK}']"
+    for task in "${BENCH_TASKS[@]}"; do
+        echo "--- ${MODEL} / ${task} ---"
+        TAGS="['${MODEL}','scratch_benchmark','${task}']"
         FT_START=$(date +%s)
 
-        FT_OUTPUT_DIR="outputs/benchmark/${MODEL}_${FT_TASK}_$(date +%Y%m%d_%H%M%S)"
+        OUTPUT_DIR="outputs/benchmark/${MODEL}_${task}_$(date +%Y%m%d_%H%M%S)"
 
         CUDA_VISIBLE_DEVICES=${DEVICE} graphium-train \
             model=${MODEL} \
             accelerator=gpu \
             tasks=admet \
-            +finetuning=admet \
-            $(wandb_flags "${FT_TAGS}") \
-            hydra.run.dir=${FT_OUTPUT_DIR} \
+            $(wandb_flags "${TAGS}") \
+            hydra.run.dir=${OUTPUT_DIR} \
             ++constants.raise_train_error=False \
-            ++constants.task=${FT_TASK} \
-            ++finetuning.task=${FT_TASK} \
-            ++datamodule.args.tdc_benchmark_names=${FT_TASK} \
+            ++constants.task=${task} \
+            ++datamodule.args.tdc_benchmark_names=${task} \
+            ++constants.norm=layer_norm \
             ++datamodule.args.num_workers=0 \
             ++datamodule.args.featurization_n_jobs=0 \
             ++datamodule.args.processed_graph_data_path=null \
-            ++finetuning.pretrained_model=${CKPT} \
-            ++finetuning.unfreeze_pretrained_depth=0 \
-            ++finetuning.epoch_unfreeze_all=none \
-            ++finetuning.finetuning_head.in_dim=256 \
-            ++finetuning.finetuning_head.hidden_dims=256 \
-            ++finetuning.new_out_dim=256 \
-            ++finetuning.finetuning_head.depth=4 \
-            ++finetuning.added_depth=4 \
-            ++architecture.task_heads.${FT_TASK}.hidden_dims=256 \
+            ++datamodule.args.batch_size_training=32 \
+            ++trainer.trainer.precision=bf16-mixed \
+            ++architecture.task_heads.${task}.hidden_dims=256 \
+            ++architecture.task_heads.${task}.depth=4 \
             ++trainer.model_checkpoint.save_last=False \
             ${EXTRA_FLAGS:-} \
-        || { echo "WARN: finetune ${MODEL}/${FT_TASK} failed"; continue; }
+        || { echo "WARN: ${MODEL}/${task} failed"; echo -e "${MODEL}\t${task}\tFAIL\tFAIL\t0" >> "${RESULTS_FILE}"; continue; }
 
         FT_END=$(date +%s)
         FT_TIME=$((FT_END - FT_START))
 
-        # Extract metrics
-        FT_MAE=$(grep "mae/test" "${FT_OUTPUT_DIR}/test_results.yaml" 2>/dev/null | head -1 | awk '{print $2}')
-        FT_PEARSON=$(grep "pearson.*test\|pearsonr.*test" "${FT_OUTPUT_DIR}/test_results.yaml" 2>/dev/null | head -1 | awk '{print $2}')
-        FT_MAE=${FT_MAE:-"N/A"}
-        FT_PEARSON=${FT_PEARSON:-"N/A"}
+        # Extract metrics (mae for regression, auroc for classification)
+        MAE=$(grep "mae/test" "${OUTPUT_DIR}/test_results.yaml" 2>/dev/null | head -1 | awk '{print $2}' || true)
+        AUROC=$(grep "auroc/test" "${OUTPUT_DIR}/test_results.yaml" 2>/dev/null | head -1 | awk '{print $2}' || true)
+        PEARSON=$(grep -E "pearson.*test|pearsonr.*test" "${OUTPUT_DIR}/test_results.yaml" 2>/dev/null | head -1 | awk '{print $2}' || true)
 
-        echo "  MAE=${FT_MAE}, Pearson=${FT_PEARSON}, Time=${FT_TIME}s"
+        METRIC=${MAE:-${AUROC:-"N/A"}}
+        PEARSON=${PEARSON:-"N/A"}
+        # Replace YAML .nan with N/A
+        [[ "${METRIC}" == ".nan" ]] && METRIC="N/A"
+        [[ "${PEARSON}" == ".nan" ]] && PEARSON="N/A"
 
-        # Log to TSV
-        echo -e "${MODEL}\t${PARAMS}\t${PT_TIME}\t${FT_TASK}\t${FT_MAE}\t${FT_PEARSON}\t${FT_TIME}" >> "${RESULTS_FILE}"
+        echo "  metric=${METRIC}, pearson=${PEARSON}, time=${FT_TIME}s"
+        echo -e "${MODEL}\t${task}\t${METRIC}\t${PEARSON}\t${FT_TIME}" >> "${RESULTS_FILE}"
+
+        sleep 1
     done
-
     echo ""
 done
 
 echo "============================================================"
-echo "DONE — Results in ${RESULTS_FILE}"
+echo "DONE — Results:"
 echo "============================================================"
-cat "${RESULTS_FILE}" | column -t -s$'\t'
+column -t -s$'\t' "${RESULTS_FILE}"

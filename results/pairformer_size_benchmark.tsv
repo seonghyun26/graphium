@@ -1,1 +1,21 @@
-model	params	pretrain_time_s	ft_task	ft_mae	ft_pearson	ft_time_s
+model	task	mae_or_auroc	pearson	time_s
+pairformer	caco2_wang	1.1953125	0.7109375	870
+pairformer	solubility_aqsoldb	N/A	N/A	11734
+pairformer	half_life_obach	8.625	N/A	1701
+pairformer	pgp_broccatelli	0.8068182468414307	N/A	807
+pairformer	herg	0.8048224449157715	N/A	509
+pairformer_small	caco2_wang	1.265625	0.61328125	452
+pairformer_small	solubility_aqsoldb	0.93359375	0.8359375	6036
+pairformer_small	half_life_obach	8.6875	N/A	870
+pairformer_small	pgp_broccatelli	0.8597707152366638	N/A	455
+pairformer_small	herg	0.7895079851150513	N/A	284
+pairformer_medium	caco2_wang	1.0859375	N/A	666
+pairformer_medium	solubility_aqsoldb	0.9140625	0.859375	8910
+pairformer_medium	half_life_obach	8.625	0.034912109375	1293
+pairformer_medium	pgp_broccatelli	0.851073145866394	N/A	637
+pairformer_medium	herg	0.7627891898155212	N/A	401
+pairformer_large	caco2_wang	1.2734375	0.48828125	1193
+pairformer_large	solubility_aqsoldb	0.890625	0.8515625	15707
+pairformer_large	half_life_obach	8.625	N/A	2372
+pairformer_large	pgp_broccatelli	0.863203227519989	N/A	963
+pairformer_large	herg	0.778429388999939	N/A	633
