@@ -11,9 +11,6 @@
 defaults:
   - pairformer
 
-constants:
-  norm: layer_norm
-
 architecture:
   pre_nn:
     out_dim: 384

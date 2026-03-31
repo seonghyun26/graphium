@@ -46,6 +46,11 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-12}
         BATCH_SIZE=${BATCH_SIZE:-192}
         ;;
+    gpspp_768)
+        DIM=${DIM:-768}
+        GNN_DEPTH=${GNN_DEPTH:-8}
+        BATCH_SIZE=${BATCH_SIZE:-128}
+        ;;
     pairformer)
         DIM=${DIM:-256}
         GNN_DEPTH=${GNN_DEPTH:-16}
@@ -229,6 +234,7 @@ case "${MODEL}" in
     mpnn)       DIM_FLAGS=$(mpnn_dim_flags "${DIM}") ;;
     gpspp)      DIM_FLAGS=$(gpspp_dim_flags "${DIM}") ;;
     gpspp_800M) DIM_FLAGS="" ;;  # gpspp_800M sets dims in model config
+    gpspp_768)  DIM_FLAGS="" ;;  # gpspp_768 sets dims in model config
     pairformer)        DIM_FLAGS="" ;;  # pairformer uses config defaults
     pairformer_small)  DIM_FLAGS="" ;;  # dims set in model config
     pairformer_medium) DIM_FLAGS="" ;;  # dims set in model config
@@ -265,8 +271,19 @@ if [[ -n "${_USER_BATCH_SIZE}" ]]; then
     BATCH_FLAGS="++datamodule.args.batch_size_training=${BATCH_SIZE}"
 fi
 
+# ── Build depth flags ────────────────────────────────────────────────────────
+# Models with dedicated configs set depth internally; don't override via CLI.
+DEPTH_FLAGS=""
+case "${MODEL}" in
+    gpspp_800M|gpspp_768|pairformer|pairformer_small|pairformer_medium|pairformer_large|pairformer_boltz|pairmixer|pairmixer_small|pairmixer_boltz)
+        ;;  # depth comes from model config
+    *)
+        DEPTH_FLAGS="++architecture.gnn.depth=${GNN_DEPTH}"
+        ;;
+esac
+
 # ── Run ──────────────────────────────────────────────────────────────────────
-echo "=== Pre-training ${MODEL} on ${DATASET} (dim=${DIM}, depth=${GNN_DEPTH}, bs=${BATCH_SIZE:-config}) ==="
+echo "=== Pre-training ${MODEL} on ${DATASET} (dim=${DIM:-config}, depth=${GNN_DEPTH:-config}, bs=${BATCH_SIZE:-config}) ==="
 
 CUDA_VISIBLE_DEVICES=${DEVICE} graphium-train \
     model=${MODEL} \
@@ -275,8 +292,7 @@ CUDA_VISIBLE_DEVICES=${DEVICE} graphium-train \
     training=${TRAINING} \
     architecture=${ARCHITECTURE} \
     $(wandb_flags "${TAGS}") \
-    ++constants.norm=layer_norm \
-    ++architecture.gnn.depth=${GNN_DEPTH} \
+    ${DEPTH_FLAGS} \
     ${BATCH_FLAGS} \
     ${DIM_FLAGS} \
     ${SAMPLE_FLAGS} \

@@ -41,7 +41,7 @@ TAGS="['${MODEL}','finetune','admet','${PRETRAIN_DATASET}']"
 DIM=${DIM:-384}
 GNN_DEPTH=${GNN_DEPTH:-48}
 BATCH_SIZE=${BATCH_SIZE:-32}
-ARCH_FLAGS="++constants.norm=layer_norm ++architecture.gnn.depth=${GNN_DEPTH}"
+ARCH_FLAGS="++architecture.gnn.depth=${GNN_DEPTH}"
 DATAMODULE_FLAGS="++datamodule.args.batch_size_training=${BATCH_SIZE}"
 
 for task in "${ADMET_TASKS[@]}"; do

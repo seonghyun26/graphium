@@ -97,21 +97,14 @@ esac
 # dims/depth from their YAML — don't override via CLI.
 case "${MODEL}" in
     gpspp_800M|pairformer|pairformer_small|pairformer_medium|pairformer_large|pairformer_boltz|pairmixer|pairmixer_small|pairmixer_boltz)
-        ARCH_FLAGS="++constants.norm=layer_norm"
+        ARCH_FLAGS=""
         DATAMODULE_FLAGS="++datamodule.args.batch_size_training=${BATCH_SIZE}"
         echo "=== Training ${MODEL} from scratch on ADMET (config defaults) ==="
         ;;
     *)
-        ARCH_FLAGS="++constants.norm=layer_norm ++architecture.gnn.depth=${GNN_DEPTH} ${DIM_FLAGS}"
+        ARCH_FLAGS="++architecture.gnn.depth=${GNN_DEPTH} ${DIM_FLAGS}"
         DATAMODULE_FLAGS="++datamodule.args.batch_size_training=${BATCH_SIZE}"
         echo "=== Training ${MODEL} from scratch on ADMET (dim=${DIM}, depth=${GNN_DEPTH}) ==="
-        ;;
-esac
-
-# Precision override: pairformer/pairmixer triangle ops overflow fp16
-case "${MODEL}" in
-    pairformer*|pairmixer*)
-        ARCH_FLAGS="${ARCH_FLAGS} ++trainer.trainer.precision=bf16-mixed"
         ;;
 esac
 

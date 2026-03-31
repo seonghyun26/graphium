@@ -18,7 +18,6 @@ CUDA_VISIBLE_DEVICES=$DEVICE graphium-train \
     ++constants.wandb.save_dir=null \
     ++constants.wandb.project=graphium \
     ++constants.wandb.tags="['gpspp','pretrain','rxrx3','cellimage']" \
-    ++constants.norm=layer_norm \
     ++architecture.pre_nn.out_dim=$DIM \
     ++architecture.pre_nn.hidden_dims=$DIM \
     ++architecture.gnn.in_dim=$DIM \

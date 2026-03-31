@@ -15,7 +15,7 @@ BATCH_SIZE=${BATCH_SIZE:-32}
 
 TAGS="['${MODEL}','scratch','admet']"
 
-ARCH_FLAGS="++constants.norm=layer_norm ++architecture.gnn.depth=${GNN_DEPTH}"
+ARCH_FLAGS="++architecture.gnn.depth=${GNN_DEPTH}"
 DATAMODULE_FLAGS="++datamodule.args.batch_size_training=${BATCH_SIZE}"
 
 # Tasks that had empty metrics from the interrupted run

@@ -17,6 +17,7 @@ defaults:
 
 constants:
   seed: 0
+  norm: layer_norm
   wandb:
     entity: eddy26
     save_dir: null

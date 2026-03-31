@@ -31,7 +31,6 @@ COMMON_FLAGS="\
     training=toymix \
     architecture=toymix \
     ++constants.seed=${SEED} \
-    ++constants.norm=layer_norm \
     ++constants.max_epochs=${EPOCHS} \
     ++constants.raise_train_error=true \
     ++constants.name=moe_test \

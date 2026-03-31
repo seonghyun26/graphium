@@ -61,7 +61,6 @@ for task in "${MOE_TASKS[@]}"; do
         $(wandb_flags "${TAGS}") \
         ++constants.raise_train_error=False \
         ++constants.task=${task} \
-        ++constants.norm=layer_norm \
         ++finetuning.task=${task} \
         ++datamodule.args.tdc_benchmark_names=${task} \
         ++datamodule.args.num_workers=0 \

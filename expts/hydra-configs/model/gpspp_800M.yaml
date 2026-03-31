@@ -10,9 +10,6 @@ hydra:
   run:
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
 
-constants:
-  norm: layer_norm
-
 datamodule:
   args:
     batch_size_training: 192

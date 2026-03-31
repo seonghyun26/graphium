@@ -45,7 +45,6 @@ CUDA_VISIBLE_DEVICES=${DEVICE} graphium-train \
     training=${DATASET} \
     architecture=toymix \
     $(wandb_flags "${TAGS}") \
-    ++constants.norm=layer_norm \
     ++constants.max_epochs=${MAX_EPOCHS} \
     ++constants.raise_train_error=true \
     ++architecture.gnn.depth=${GNN_DEPTH} \

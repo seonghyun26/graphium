@@ -42,7 +42,6 @@ for task in "${ABLATION_TASKS[@]}"; do
         $(wandb_flags "${TAGS}") \
         ++constants.raise_train_error=False \
         ++constants.task=${task} \
-        ++constants.norm=layer_norm \
         ++datamodule.args.tdc_benchmark_names=${task} \
         ++datamodule.args.num_workers=0 \
         ++datamodule.args.featurization_n_jobs=0 \

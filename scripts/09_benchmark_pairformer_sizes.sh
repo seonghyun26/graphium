@@ -52,7 +52,6 @@ for MODEL in "${MODELS[@]}"; do
             ++constants.raise_train_error=False \
             ++constants.task=${task} \
             ++datamodule.args.tdc_benchmark_names=${task} \
-            ++constants.norm=layer_norm \
             ++datamodule.args.num_workers=0 \
             ++datamodule.args.featurization_n_jobs=0 \
             ++datamodule.args.processed_graph_data_path=null \

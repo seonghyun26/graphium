@@ -1,0 +1,3 @@
+model	epochs	max_steps	batch_size	wall_time_s	peak_mem_MiB	train_loss	qm9_mae	zinc_mae	tox21_auroc
+pairformer_boltz	3	50	16	228	4416	0.76953125	0.76953125	0.796875	0.30373677611351013
+pairmixer_boltz	3	50	16	130	4416	0.78125	0.78125	0.79296875	0.2526455223560333

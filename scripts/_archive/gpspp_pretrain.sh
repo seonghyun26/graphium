@@ -15,7 +15,6 @@ CUDA_VISIBLE_DEVICES=$DEVICE graphium-train \
     ++constants.wandb.save_dir=null \
     ++constants.wandb.project=graphium \
     ++constants.wandb.tags="['gpspp','pretrain','largemix','more layers']" \
-    ++constants.norm=layer_norm \
     ++datamodule.args.batch_size_training=300 \
     ++architecture.pre_nn.out_dim=$DIM \
     ++architecture.pre_nn.hidden_dims=$DIM \
