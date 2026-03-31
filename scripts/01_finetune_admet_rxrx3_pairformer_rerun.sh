@@ -53,7 +53,6 @@ for task in "${ADMET_TASKS[@]}"; do
         tasks=admet \
         +finetuning=${FINETUNING_CONFIG} \
         $(wandb_flags "${TAGS}") \
-        ++constants.raise_train_error=False \
         ++constants.task=${task} \
         ++finetuning.task=${task} \
         ++finetuning.pretrained_model="${CKPT}" \
@@ -64,7 +63,6 @@ for task in "${ADMET_TASKS[@]}"; do
         ++datamodule.args.tdc_benchmark_names=${task} \
         ${ARCH_FLAGS} \
         ${DATAMODULE_FLAGS} \
-        ++trainer.model_checkpoint.save_last=False \
         ${EXTRA_FLAGS:-} \
     || echo "WARN: task ${task} failed, continuing..."
 

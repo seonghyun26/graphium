@@ -136,12 +136,9 @@ for task in "${ADMET_TASKS[@]}"; do
         accelerator=gpu \
         tasks=admet \
         $(wandb_flags "${TAGS}") \
-        ++constants.raise_train_error=False \
         ++constants.task=${task} \
         ++finetuning.task=${task} \
         ++datamodule.args.tdc_benchmark_names=${task} \
-        ++datamodule.args.num_workers=0 \
-        ++datamodule.args.featurization_n_jobs=0 \
         +finetuning=${FINETUNING_CONFIG} \
         ++finetuning.pretrained_model=${CKPT} \
         ++finetuning.unfreeze_pretrained_depth=${UNFREEZE_DEPTH} \
@@ -152,7 +149,6 @@ for task in "${ADMET_TASKS[@]}"; do
         ++finetuning.finetuning_head.depth=${ADDED_DEPTH} \
         ++finetuning.added_depth=${ADDED_DEPTH} \
         ++architecture.task_heads.${task}.hidden_dims=${FINETUNE_DIM} \
-        ++trainer.model_checkpoint.save_last=False \
         ++trainer.model_checkpoint.dirpath=models_checkpoints/admet/${PRETRAIN_DATASET}/${MODEL}/${task}/ \
         ${SUB_MODULE:+++finetuning.sub_module_from_pretrained=${SUB_MODULE}} \
         ${EXTRA_FLAGS:-} \

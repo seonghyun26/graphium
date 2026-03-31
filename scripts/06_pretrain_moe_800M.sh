@@ -25,8 +25,6 @@ CUDA_VISIBLE_DEVICES=${DEVICE} graphium-train \
     training=${DATASET} \
     architecture=toymix \
     $(wandb_flags "${TAGS}") \
-    ++architecture.gnn.depth=12 \
-    ++trainer.trainer.precision=bf16-mixed \
     ${EXTRA_FLAGS:-}
 
 echo ""

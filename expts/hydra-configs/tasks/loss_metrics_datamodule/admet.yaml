@@ -140,3 +140,12 @@ datamodule:
     tdc_benchmark_names: null
     tdc_train_val_seed: ${constants.seed}
     processed_graph_data_path: null
+
+# Sensible defaults for ADMET benchmark runs (scratch and finetuning).
+# Pretrain configs override raise_train_error and save_last as needed.
+constants:
+  raise_train_error: false
+
+trainer:
+  model_checkpoint:
+    save_last: false

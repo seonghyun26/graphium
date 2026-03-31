@@ -47,6 +47,21 @@ import graphium.cli.finetune_utils
 TESTING_ONLY_CONFIG_KEY = "testing_only"
 
 
+def _extract_pretrain_dataset(tags) -> str:
+    """Extract pretrain dataset name from W&B tags list.
+
+    Tags follow the pattern: ['model', 'finetune', 'admet', 'pretrain_dataset', ...]
+    The pretrain dataset is the tag that is not a known keyword.
+    """
+    if not tags or not isinstance(tags, (list, tuple)):
+        return None
+    skip = {"finetune", "scratch", "admet", "moe", "pretrain", "arch_comparison",
+            "speed_benchmark", "scratch_benchmark"}
+    # First tag is model name; skip it and known keywords
+    candidates = [t for t in tags[1:] if t not in skip]
+    return candidates[-1] if candidates else None
+
+
 def _save_results_csv(results: dict, cfg: dict, output_dir: str) -> None:
     """Append a single row of results to a centralized CSV in the results/ directory.
 
@@ -66,12 +81,21 @@ def _save_results_csv(results: dict, cfg: dict, output_dir: str) -> None:
     constants = cfg.get("constants", {})
     is_finetuning = "finetuning" in cfg
 
+    # Extract pretrain dataset name from W&B tags (more reliable than checkpoint path)
+    if is_finetuning:
+        wandb_tags = constants.get("wandb", {}).get("tags", [])
+        pretrain_dataset = _extract_pretrain_dataset(wandb_tags)
+        if pretrain_dataset is None:
+            pretrain_dataset = finetuning_cfg.get("pretrained_model", "unknown")
+    else:
+        pretrain_dataset = "scratch"
+
     row = {
         "timestamp": datetime.now().isoformat(),
         "model": cfg.get("architecture", {}).get("gnn", {}).get("layer_type", "unknown"),
         "task": constants.get("task", "multitask"),
         "seed": constants.get("seed", 0),
-        "pretrain_dataset": finetuning_cfg.get("pretrained_model", "scratch") if is_finetuning else "scratch",
+        "pretrain_dataset": pretrain_dataset,
         "is_finetuning": is_finetuning,
         "unfreeze_depth": finetuning_cfg.get("training_kwargs", {}).get("unfreeze_pretrained_depth", "N/A") if is_finetuning else "N/A",
         "epoch_unfreeze_all": finetuning_cfg.get("training_kwargs", {}).get("epoch_unfreeze_all", "N/A") if is_finetuning else "N/A",

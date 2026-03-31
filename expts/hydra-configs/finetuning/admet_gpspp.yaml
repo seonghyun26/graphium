@@ -36,17 +36,25 @@ constants:
     name: ${constants.name}
     project: ${constants.task}
     entity: multitask-gnn
-    save_dir: logs/${constants.task}
   seed: 42
   max_epochs: 100
   data_dir: expts/data/admet/${constants.task}
-  raise_train_error: true
+  raise_train_error: false
 
 predictor:
   optim_kwargs:
     lr: 1.e-4
 
 # == Fine-tuning config == 
+
+datamodule:
+  args:
+    num_workers: 0
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    save_last: false
 
 finetuning:
 

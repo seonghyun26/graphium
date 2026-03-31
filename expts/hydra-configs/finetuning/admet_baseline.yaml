@@ -14,7 +14,7 @@ constants:
   max_epochs: 100
   data_dir: ../data/graphium/admet/${constants.task}
   datacache_path: /home/shpark/prj-molrepr/datacache/admet/${constants.task}
-  raise_train_error: true
+  raise_train_error: false
   metric: ${get_metric_name:${constants.task}}
 
 datamodule:
@@ -22,7 +22,8 @@ datamodule:
     batch_size_training: 32
     dataloading_from: ram
     persistent_workers: true
-    num_workers: 4
+    num_workers: 0
+    featurization_n_jobs: 0
   
 trainer:
   model_checkpoint:

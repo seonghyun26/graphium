@@ -40,7 +40,6 @@ wandb_flags() {
     local tags="$1"
     echo "++constants.seed=${SEED}"
     echo "++constants.wandb.entity=${WANDB_ENTITY}"
-    echo "++constants.wandb.save_dir=null"
     echo "++constants.wandb.project=${WANDB_PROJECT}"
     echo "++constants.wandb.tags=${tags}"
     echo "++constants.results_csv_dir=${RESULTS_DIR}"

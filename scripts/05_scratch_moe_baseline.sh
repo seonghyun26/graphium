@@ -15,7 +15,7 @@ DIM=768
 GNN_DEPTH=8
 BATCH_SIZE=128
 
-TAGS="['${MODEL}','scratch','admet','moe_baseline','768d8L']"
+TAGS="['${MODEL}','scratch','admet','no_moe_baseline','768d8L']"
 
 # Same 5 representative tasks as the MoE finetuning script
 ABLATION_TASKS=(

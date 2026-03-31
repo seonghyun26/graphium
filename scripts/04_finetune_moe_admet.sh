@@ -33,7 +33,7 @@ if [[ ! -f "${CKPT}" ]]; then
     exit 1
 fi
 
-TAGS="['${MODEL}','moe','finetune','admet','${PRETRAIN_DATASET}']"
+TAGS="['${MODEL}','moe','${MOE_EXPERTS}exp_top${MOE_TOP_K}','finetune','admet','${PRETRAIN_DATASET}']"
 
 # 5 representative tasks: one per ADMET category
 MOE_TASKS=(
@@ -59,12 +59,9 @@ for task in "${MOE_TASKS[@]}"; do
         accelerator=gpu \
         tasks=admet \
         $(wandb_flags "${TAGS}") \
-        ++constants.raise_train_error=False \
         ++constants.task=${task} \
         ++finetuning.task=${task} \
         ++datamodule.args.tdc_benchmark_names=${task} \
-        ++datamodule.args.num_workers=0 \
-        ++datamodule.args.featurization_n_jobs=0 \
         +finetuning=${FINETUNING_CONFIG} \
         ++finetuning.pretrained_model=${CKPT} \
         ++finetuning.unfreeze_pretrained_depth=${UNFREEZE_DEPTH} \
@@ -80,7 +77,6 @@ for task in "${MOE_TASKS[@]}"; do
         ++architecture.gnn.layer_kwargs.moe_top_k=${MOE_TOP_K} \
         ++architecture.gnn.layer_kwargs.moe_aux_loss_coeff=${MOE_AUX_COEFF} \
         ++architecture.task_heads.${task}.hidden_dims=${FINETUNE_DIM} \
-        ++trainer.model_checkpoint.save_last=False \
         ${EXTRA_FLAGS:-} \
     || echo "WARN: task ${task} failed, continuing..."
 
