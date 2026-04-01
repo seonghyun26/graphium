@@ -1,8 +1,8 @@
 # @package _global_
 
-# PairMixer Small with the ToyMix + DTI dataset.
+# PairMixer Medium (~10M params) with the ToyMix + DTI dataset.
 constants:
-  name: toymix_dti_pairmixer_small
+  name: toymix_dti_pairmixer_medium
   seed: 42
   max_epochs: 100
   data_dir: ./data/graphium/neurips2023/small-dataset
@@ -11,8 +11,8 @@ constants:
 
 datamodule:
   args:
-    batch_size_training: 32
-    batch_size_inference: 32
+    batch_size_training: 16
+    batch_size_inference: 16
     dataloading_from: ram
     num_workers: 4
     persistent_workers: true
@@ -20,6 +20,6 @@ datamodule:
 
 trainer:
   model_checkpoint:
-    dirpath: models_checkpoints/toymix-dti/pairmixer_small/${now:%Y-%m-%d_%H-%M-%S}/
+    dirpath: models_checkpoints/toymix-dti/pairmixer_medium/${now:%Y-%m-%d_%H-%M-%S}/
   trainer:
     precision: bf16-mixed

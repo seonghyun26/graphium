@@ -1,0 +1,30 @@
+# @package _global_
+# PairMixer medium configuration (~10M parameters)
+#
+# D_s=256, D_z=128, depth=18 → ~9.8M params
+# Reference: Ouyang-Zhang et al., arXiv:2510.18870
+# Code: https://github.com/genesistherapeutics/pairmixer
+
+architecture:
+  pre_nn:
+    out_dim: 256
+    hidden_dims: 256
+
+  gnn:
+    in_dim: 256
+    out_dim: 256
+    hidden_dims: 256
+    depth: 18
+    layer_type: 'pyg:pairmixer'
+    layer_kwargs:
+      pair_dim: 128              # Matches paper default C_z
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      use_checkpoint: true
+
+  graph_output_nn:
+    graph:
+      pair_dim: 128              # Pool pair_feat directly
+      hidden_dims: 256
+      out_dim: 512
