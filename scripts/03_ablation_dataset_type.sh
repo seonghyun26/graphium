@@ -16,7 +16,7 @@
 #
 # Pipeline per condition:
 #   1. Pre-train on dataset D  (00_pretrain.sh)
-#   2. Fine-tune on ADMET      (01_finetune_admet.sh)
+#   2. Fine-tune on ADMET      (00_finetune_admet.sh)
 #
 # Usage:
 #   bash scripts/03_ablation_dataset_type.sh [gpu_id]
@@ -60,7 +60,7 @@ echo "============================================================"
 echo ""
 echo ">>> [0/5] Scratch baseline (no pre-training) <<<"
 EXTRA_FLAGS="++constants.wandb.tags=\"['${MODEL}','scratch','admet','ablation','dataset_type']\"" \
-    bash "$(dirname "$0")/02_scratch_admet.sh" "${MODEL}" "${DEVICE}"
+    bash "$(dirname "$0")/00_scratch_admet.sh" "${MODEL}" "${DEVICE}"
 
 # ── Step 1-4: Pre-train + Fine-tune for each dataset ────────────────────────
 for i in "${!DATASETS[@]}"; do
@@ -97,7 +97,7 @@ for i in "${!DATASETS[@]}"; do
     EPOCH_UNFREEZE_ALL=${EPOCH_UNFREEZE_ALL} \
     FINETUNING_CONFIG=${FINETUNING_CONFIG} \
     EXTRA_FLAGS="++constants.wandb.tags=\"['${MODEL}','finetune','admet','${DATASET}','ablation','dataset_type']\"" \
-        bash "$(dirname "$0")/01_finetune_admet.sh" "${MODEL}" "${CKPT_FILE}" "${DEVICE}"
+        bash "$(dirname "$0")/00_finetune_admet.sh" "${MODEL}" "${CKPT_FILE}" "${DEVICE}"
 done
 
 echo ""

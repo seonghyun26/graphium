@@ -2,23 +2,24 @@
 PairMixer layer for Graphium, based on the PairMixer architecture.
 
 Reference:
-    Gao et al., "Triangle Multiplication Is All You Need for Biomolecular
-    Structure Representations", arXiv:2510.18870, 2025.
+    Ouyang-Zhang et al., "Triangle Multiplication Is All You Need for
+    Biomolecular Structure Representations", arXiv:2510.18870, 2025.
+    Code: https://github.com/genesistherapeutics/pairmixer
 
 PairMixer simplifies the Pairformer by removing:
-    - Triangle attention (both starting and ending)
+    - Triangle attention (both starting and ending) on the pair track
     - Attention with pair bias on the single track
+    - Sequence (single-track) updates entirely
 
 The backbone operates exclusively on the pair representation z via:
     1. Triangle multiplication (outgoing)
     2. Triangle multiplication (incoming)
-    3. Transition MLP on z
+    3. Transition MLP (FFN) on z
 
-The single (node) track receives only a simple transition MLP update
-(no attention). This yields significant speedups on large molecules due
-to eliminating the O(N^2 * H * D) triangle attention operations while
-retaining the O(N^3) triangle multiplication that captures the essential
-triangular geometric constraints.
+The single representation s is left unchanged (s_backbone = s_init),
+matching the reference implementation. Final predictions are made by
+pooling pair_feat directly in GraphOutputNN (see ``pair_dim`` kwarg
+in the graph_output_nn config).
 """
 
 from typing import Callable, Optional, Union
@@ -30,7 +31,6 @@ from torch.utils.checkpoint import checkpoint as _checkpoint
 from torch_geometric.data import Batch
 
 from graphium.nn.base_graph_layer import BaseGraphModule
-from graphium.nn.base_layers import MLP, MoELayer
 from graphium.ipu.to_dense_batch import to_dense_batch, to_sparse_batch
 from graphium.utils.decorators import classproperty
 
@@ -46,18 +46,19 @@ from .pairformer_pyg import (
 class PairMixerLayerPyg(BaseGraphModule):
     """A single PairMixer layer adapted for Graphium.
 
-    Like PairformerLayerPyg, this layer maintains two representation tracks:
-        - **Single (node) track** ``s`` of shape ``(B, N, D_s)``
-        - **Pairwise track** ``z`` of shape ``(B, N, N, D_z)``
+    Following the reference implementation, only the pair representation
+    z is updated.  The single (node) track s passes through unchanged
+    (s_backbone = s_init).
 
     Each layer applies:
-        1. Triangle multiplication (outgoing + incoming) on z
-        2. Transition MLP on z
-        3. Transition MLP on s (no attention — single track is lightweight)
+        1. Triangle multiplication (outgoing) on z
+        2. Triangle multiplication (incoming) on z
+        3. Transition MLP (FFN) on z
 
-    Compared to Pairformer, this removes:
-        - Triangle attention (starting + ending) on the pair track
-        - Attention with pair bias on the single track
+    The pair representation is stored on the batch as ``pair_feat`` and
+    ``pair_mask``.  Downstream, ``GraphOutputNN`` pools ``pair_feat``
+    directly for graph-level predictions when its ``pair_dim`` kwarg
+    is set.
 
     Parameters
     ----------
@@ -68,7 +69,7 @@ class PairMixerLayerPyg(BaseGraphModule):
     pair_dim : int
         Pairwise representation dimension (D_z).
     pair_dropout : float
-        Dropout rate applied row/column-wise on the pair track.
+        Dropout rate applied row-wise on the pair track.
     hidden_dim_scaling : float
         Factor to scale hidden dim in transition MLPs (default 4).
     opm_hidden : int
@@ -94,11 +95,10 @@ class PairMixerLayerPyg(BaseGraphModule):
         tri_mul_mode: str = "einsum",
         force_float32_einsums: bool = True,
         parallel_pair_ops: bool = False,
-        # ---- Mixture-of-Experts ----
+        # Accept and ignore pairformer-specific kwargs for config compat
         moe_num_experts: int = 0,
         moe_top_k: int = 2,
         moe_aux_loss_coeff: float = 0.01,
-        # Accept and ignore pairformer-specific kwargs for config compat
         num_heads: int = 8,
         pairwise_head_width: int = 32,
         pairwise_num_heads: int = 4,
@@ -140,23 +140,9 @@ class PairMixerLayerPyg(BaseGraphModule):
         # ---- Pair track: transition MLP ----
         self.transition_z = Transition(pair_dim, int(pair_dim * hidden_dim_scaling))
 
-        # ---- Single track: transition MLP only (no attention) ----
-        s_hidden = int(in_dim * hidden_dim_scaling)
-        if moe_num_experts > 0:
-            self.transition_s = MoELayer(
-                expert_cls=Transition,
-                expert_kwargs={"dim": in_dim, "hidden": s_hidden},
-                router_dim=in_dim,
-                num_experts=moe_num_experts,
-                top_k=moe_top_k,
-                aux_loss_coeff=moe_aux_loss_coeff,
-            )
-            self.use_moe = True
-        else:
-            self.transition_s = Transition(in_dim, s_hidden)
-            self.use_moe = False
-
-        # ---- Output projection (if in_dim != out_dim) ----
+        # ---- Output projection on node features (if in_dim != out_dim) ----
+        # Node features pass through unchanged (s_backbone = s_init),
+        # but FeedForwardGraph may require in_dim == out_dim across layers.
         if in_dim != out_dim:
             self.out_proj = nn.Linear(in_dim, out_dim)
         else:
@@ -171,7 +157,11 @@ class PairMixerLayerPyg(BaseGraphModule):
     def _pair_track_ops(self, z: Tensor, pair_mask: Tensor) -> Tensor:
         """Pair-track operations: triangle multiplication + transition only.
 
-        No triangle attention — this is the key difference from Pairformer.
+        Follows the reference implementation (genesistherapeutics/pairmixer):
+        TriMulOutgoing → TriMulIncoming → FFN.
+        (Note: the paper's Algorithm 1 writes Incoming→Outgoing, but the
+        code that produced the published results uses Outgoing→Incoming,
+        consistent with the Pairformer/Boltz convention.)
         """
         if self.parallel_pair_ops:
             dmask1 = _get_dropout_mask(self.pair_dropout, z, self.training)
@@ -191,6 +181,10 @@ class PairMixerLayerPyg(BaseGraphModule):
     def forward(self, batch: Batch) -> Batch:
         """Forward pass operating on a PyG Batch.
 
+        Only the pair representation z is updated.  Node features pass
+        through unchanged (s_backbone = s_init), matching the reference
+        PairMixer implementation.
+
         Parameters
         ----------
         batch : torch_geometric.data.Batch
@@ -198,7 +192,8 @@ class PairMixerLayerPyg(BaseGraphModule):
         Returns
         -------
         torch_geometric.data.Batch
-            Updated batch with new ``feat`` and ``pair_feat``.
+            Updated batch with ``pair_feat``, ``pair_mask``, and
+            (pass-through) ``feat``.
         """
         feat = batch.feat  # (total_nodes, D_s) – sparse
 
@@ -225,20 +220,14 @@ class PairMixerLayerPyg(BaseGraphModule):
         else:
             z = self._pair_track_ops(z, pair_mask)
 
-        # ---- Single track: transition only (no attention) ----
-        if self.use_moe:
-            s_dense = s_dense + self.transition_s(s_dense, node_mask=node_mask)
-        else:
-            s_dense = s_dense + self.transition_s(s_dense)
-
-        # ---- Output projection ----
+        # ---- Node features: pass through unchanged ----
         s_dense = self.out_proj(s_dense)
-
-        # --- Convert back to sparse ---
         feat_out = to_sparse_batch(s_dense, mask_idx=idx)
 
         batch.feat = feat_out
         batch.pair_feat = z
+        batch.pair_mask = pair_mask        # stored for downstream pooling
+        batch._pair_dense_idx = idx        # dense→sparse mapping for node-level pooling
         return batch
 
     # ---- BaseGraphModule interface ----

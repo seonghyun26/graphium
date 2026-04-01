@@ -13,7 +13,7 @@ Refer to the LICENSE file for the full terms and conditions.
 
 from typing import Iterable, List, Dict, Literal, Tuple, Union, Callable, Any, Optional, Type
 from torch_geometric.data import Batch
-from graphium.ipu.to_dense_batch import to_dense_batch
+from graphium.ipu.to_dense_batch import to_dense_batch, to_sparse_batch
 from loguru import logger
 
 # Misc imports
@@ -1895,15 +1895,27 @@ class GraphOutputNN(nn.Module, MupMixin):
             "edge": "edge_feat",
         }
 
+        # Check if pair_dim is set for direct pair-feature pooling.
+        # When set (typically for PairMixer models), predictions are made
+        # from the pair representation z rather than node features:
+        #   graph-level: pool (B, N, N, D_z) → (B, D_z)
+        #   node-level:  pool (B, N, N, D_z) → (total_nodes, D_z)
+        self.pair_dim = graph_output_nn_kwargs[self.task_level].get("pair_dim", None)
+
         if self.task_level == "nodepair":
             level_in_dim = 2 * self.in_dim
         elif self.task_level == "edge":
             level_in_dim = self.in_dim_edges
         elif self.task_level == "graph":
-            self.global_pool_layer, self.out_pool_dim = self._parse_pooling_layer(
-                self.in_dim, graph_output_nn_kwargs[self.task_level]["pooling"]
-            )
-            level_in_dim = self.out_pool_dim
+            if self.pair_dim is not None:
+                level_in_dim = self.pair_dim
+            else:
+                self.global_pool_layer, self.out_pool_dim = self._parse_pooling_layer(
+                    self.in_dim, graph_output_nn_kwargs[self.task_level]["pooling"]
+                )
+                level_in_dim = self.out_pool_dim
+        elif self.task_level == "node" and self.pair_dim is not None:
+            level_in_dim = self.pair_dim
         else:
             level_in_dim = self.in_dim
 
@@ -1912,7 +1924,8 @@ class GraphOutputNN(nn.Module, MupMixin):
         # Initialize the post-processing neural net (applied after the gnn)
         name = graph_output_nn_kwargs[self.task_level].pop("name", "post-NN")
         filtered_graph_output_nn_kwargs = {
-            k: v for k, v in graph_output_nn_kwargs[self.task_level].items() if k not in ["pooling", "in_dim"]
+            k: v for k, v in graph_output_nn_kwargs[self.task_level].items()
+            if k not in ["pooling", "in_dim", "pair_dim"]
         }
         self.graph_output_nn = FeedForwardNN(
             in_dim=level_in_dim, name=name, **filtered_graph_output_nn_kwargs
@@ -1935,10 +1948,17 @@ class GraphOutputNN(nn.Module, MupMixin):
             )
         # Check if at least one graph-level task is present
         if self.task_level == "graph":
-            # pool features if the level is graph
-            g["graph_feat"] = self._pool_layer_forward(g, g["feat"])
+            if self.pair_dim is not None and hasattr(g, "pair_feat") and g.pair_feat is not None:
+                g["graph_feat"] = self._pool_pair_feat(g)
+            else:
+                g["graph_feat"] = self._pool_layer_forward(g, g["feat"])
 
-        h = g[self.map_task_level[self.task_level]]
+        # Resolve features for this task level
+        _has_pair = self.pair_dim is not None and hasattr(g, "pair_feat") and g.pair_feat is not None
+        if self.task_level == "node" and _has_pair:
+            h = self._pool_pair_to_node(g)
+        else:
+            h = g[self.map_task_level[self.task_level]]
         # Run the output network
         if self.concat_last_layers is None:
             h = self.graph_output_nn.forward(h)
@@ -2013,6 +2033,45 @@ class GraphOutputNN(nn.Module, MupMixin):
             pooled_feat = feat
 
         return pooled_feat
+
+    def _pool_pair_feat(self, g: Batch) -> torch.Tensor:
+        r"""Pool pair representation to graph-level features.
+
+        Computes a masked mean of ``g.pair_feat`` over both spatial
+        dimensions, yielding one vector per graph.
+
+        Parameters:
+            g: pyg Batch graph with ``pair_feat`` (B, N, N, D_z) and
+               ``pair_mask`` (B, N, N) attributes.
+
+        Returns:
+            torch.Tensor of shape (num_graphs, D_z).
+        """
+        z = g.pair_feat          # (B, N, N, D_z) — dense
+        mask = g.pair_mask       # (B, N, N) — 1=valid, 0=padding
+        mask_sum = mask.sum(dim=(1, 2), keepdim=True).clamp(min=1)  # (B, 1, 1)
+        graph_feat = (z * mask.unsqueeze(-1)).sum(dim=(1, 2)) / mask_sum.squeeze(-1)
+        return graph_feat        # (B, D_z)
+
+    def _pool_pair_to_node(self, g: Batch) -> torch.Tensor:
+        r"""Pool pair representation to node-level features.
+
+        Computes a masked mean of ``g.pair_feat`` over the neighbor (j)
+        dimension, yielding one vector per node, then converts back to
+        sparse format.
+
+        Parameters:
+            g: pyg Batch graph with ``pair_feat`` (B, N, N, D_z),
+               ``pair_mask`` (B, N, N), and ``_pair_dense_idx`` attributes.
+
+        Returns:
+            torch.Tensor of shape (total_nodes, D_z).
+        """
+        z = g.pair_feat          # (B, N, N, D_z) — dense
+        mask = g.pair_mask       # (B, N, N) — 1=valid, 0=padding
+        mask_j = mask.sum(dim=-1, keepdim=True).clamp(min=1)  # (B, N, 1)
+        node_feat = (z * mask.unsqueeze(-1)).sum(dim=2) / mask_j  # (B, N, D_z)
+        return to_sparse_batch(node_feat, mask_idx=g._pair_dense_idx)  # (total_nodes, D_z)
 
     def compute_nodepairs(
         self,

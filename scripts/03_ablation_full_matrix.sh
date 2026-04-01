@@ -54,7 +54,7 @@ echo "============================================================"
 echo ""
 echo ">>> [scratch] Baseline: no pre-training <<<"
 EXTRA_FLAGS="++constants.wandb.tags=\"['${MODEL}','scratch','admet','ablation','full_matrix']\"" \
-    bash "$(dirname "$0")/02_scratch_admet.sh" "${MODEL}" "${DEVICE}"
+    bash "$(dirname "$0")/00_scratch_admet.sh" "${MODEL}" "${DEVICE}"
 
 # ── Full matrix ──────────────────────────────────────────────────────────────
 for DATASET in "${DATASETS[@]}"; do
@@ -88,7 +88,7 @@ for DATASET in "${DATASETS[@]}"; do
         EPOCH_UNFREEZE_ALL=${EPOCH_UNFREEZE_ALL} \
         FINETUNING_CONFIG=${FINETUNING_CONFIG} \
         EXTRA_FLAGS="++constants.wandb.tags=\"['${MODEL}','finetune','admet','${DATASET}','frac_${FRAC}','ablation','full_matrix']\"" \
-            bash "$(dirname "$0")/01_finetune_admet.sh" "${MODEL}" "${CKPT_FILE}" "${DEVICE}"
+            bash "$(dirname "$0")/00_finetune_admet.sh" "${MODEL}" "${CKPT_FILE}" "${DEVICE}"
     done
 done
 

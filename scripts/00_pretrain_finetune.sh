@@ -82,4 +82,4 @@ echo "  Stage 2: Fine-tuning on ADMET (checkpoint: ${CKPT})"
 echo "========================================================"
 
 EXTRA_FLAGS="${EXTRA_FINETUNE_FLAGS:-}" \
-    bash "${SCRIPT_DIR}/01_finetune_admet.sh" "${MODEL}" "${CKPT}" "${GPU_ID}"
+    bash "${SCRIPT_DIR}/00_finetune_admet.sh" "${MODEL}" "${CKPT}" "${GPU_ID}"

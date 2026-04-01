@@ -5,7 +5,7 @@
 #   bash scripts/00_pretrain.sh <model> <dataset> [gpu_id]
 #
 # Arguments:
-#   model    : gcn | mpnn | gpspp | gpspp_800M | pairformer
+#   model    : gcn | mpnn | gpspp | gpspp_800M | gpspp_800M_moe | pairformer
 #   dataset  : toymix | largemix | rxrx3 | dti | largemix_rxrx3 | toymix_rxrx3
 #              | largemix_dti | toymix_dti | toymix_rxrx3_dti | largemix_rxrx3_dti
 #              | rxrx3_dti
@@ -42,6 +42,11 @@ case "${MODEL}" in
         BATCH_SIZE=${BATCH_SIZE:-300}
         ;;
     gpspp_800M)
+        DIM=${DIM:-1536}
+        GNN_DEPTH=${GNN_DEPTH:-12}
+        BATCH_SIZE=${BATCH_SIZE:-192}
+        ;;
+    gpspp_800M_moe)
         DIM=${DIM:-1536}
         GNN_DEPTH=${GNN_DEPTH:-12}
         BATCH_SIZE=${BATCH_SIZE:-192}
@@ -233,8 +238,9 @@ case "${MODEL}" in
     gcn)        DIM_FLAGS=$(gcn_dim_flags "${DIM}") ;;
     mpnn)       DIM_FLAGS=$(mpnn_dim_flags "${DIM}") ;;
     gpspp)      DIM_FLAGS=$(gpspp_dim_flags "${DIM}") ;;
-    gpspp_800M) DIM_FLAGS="" ;;  # gpspp_800M sets dims in model config
-    gpspp_768)  DIM_FLAGS="" ;;  # gpspp_768 sets dims in model config
+    gpspp_800M)     DIM_FLAGS="" ;;  # gpspp_800M sets dims in model config
+    gpspp_800M_moe) DIM_FLAGS="" ;;  # gpspp_800M_moe sets dims in model config
+    gpspp_768)      DIM_FLAGS="" ;;  # gpspp_768 sets dims in model config
     pairformer)        DIM_FLAGS="" ;;  # pairformer uses config defaults
     pairformer_small)  DIM_FLAGS="" ;;  # dims set in model config
     pairformer_medium) DIM_FLAGS="" ;;  # dims set in model config
@@ -275,7 +281,7 @@ fi
 # Models with dedicated configs set depth internally; don't override via CLI.
 DEPTH_FLAGS=""
 case "${MODEL}" in
-    gpspp_800M|gpspp_768|pairformer|pairformer_small|pairformer_medium|pairformer_large|pairformer_boltz|pairmixer|pairmixer_small|pairmixer_boltz)
+    gpspp_800M|gpspp_800M_moe|gpspp_768|pairformer|pairformer_small|pairformer_medium|pairformer_large|pairformer_boltz|pairmixer|pairmixer_small|pairmixer_boltz)
         ;;  # depth comes from model config
     *)
         DEPTH_FLAGS="++architecture.gnn.depth=${GNN_DEPTH}"

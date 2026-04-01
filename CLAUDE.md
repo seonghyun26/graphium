@@ -23,9 +23,9 @@ graphium-train model=gpspp_800M accelerator=gpu tasks=largemix training=largemix
 
 # Run experiment scripts (from graphium/ directory)
 bash scripts/00_pretrain.sh gpspp largemix 0        # pretrain
-bash scripts/01_finetune_admet.sh gpspp ./ckpt 0    # finetune (frozen backbone by default)
-bash scripts/02_scratch_admet.sh gpspp 0             # no-pretrain baseline
-bash scripts/06_debug.sh gpspp toymix 0              # quick sanity check (3 epochs)
+bash scripts/00_finetune_admet.sh gpspp ./ckpt 0    # finetune (frozen backbone by default)
+bash scripts/00_scratch_admet.sh gpspp 0             # no-pretrain baseline
+bash scripts/00_debug.sh gpspp toymix 0              # quick sanity check (3 epochs)
 
 # Tests
 pytest -m 'not ipu'                    # all tests except IPU
