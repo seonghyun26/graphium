@@ -1,0 +1,25 @@
+# @package _global_
+
+# PairMixer Medium (~10M params) with the ToyMix + LPM-24 dataset.
+constants:
+  name: toymix_lpm24_pairmixer_medium
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: ../datacache/toymix-lpm24/
+
+datamodule:
+  args:
+    batch_size_training: 16
+    batch_size_inference: 16
+    dataloading_from: ram
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/toymix-lpm24/pairmixer_medium/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed

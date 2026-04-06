@@ -199,6 +199,17 @@ case "${DATASET}" in
         ARCHITECTURE=toymix
         [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
         ;;
+    lpm24)
+        TASKS=lpm24
+        TRAINING=toymix_lpm24
+        ARCHITECTURE=largemix
+        ;;
+    toymix_lpm24)
+        TASKS=toymix_lpm24
+        TRAINING=toymix_lpm24
+        ARCHITECTURE=toymix
+        [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
+        ;;
     *)
         echo "Error: unknown dataset '${DATASET}'."
         exit 1
@@ -239,7 +250,7 @@ esac
 # ── Optional: sample_size for dataset size ablation ──────────────────────────
 SAMPLE_FLAGS=""
 if [[ -n "${SAMPLE_SIZE:-}" ]]; then
-    if [[ "${DATASET}" == "toymix" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_rxrx3_dti" ]]; then
+    if [[ "${DATASET}" == "toymix" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "toymix_lpm24" ]]; then
         for t in qm9 tox21 zinc; do
             SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.${t}.sample_size=${SAMPLE_SIZE}"
         done
@@ -253,6 +264,9 @@ if [[ -n "${SAMPLE_SIZE:-}" ]]; then
     fi
     if [[ "${DATASET}" == "dti" || "${DATASET}" == "dti_filtered" || "${DATASET}" == "dti_10k_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.dti.sample_size=${SAMPLE_SIZE}"
+    fi
+    if [[ "${DATASET}" == "lpm24" || "${DATASET}" == "toymix_lpm24" ]]; then
+        SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.lpm24.sample_size=${SAMPLE_SIZE}"
     fi
 fi
 
