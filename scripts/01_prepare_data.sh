@@ -3,15 +3,15 @@
 # This avoids slow featurization during training.
 #
 # Usage:
-#   bash scripts/run_prepare_data.sh <dataset> [datacache_path]
+#   bash scripts/01_prepare_data.sh <dataset> [datacache_path]
 #
 # Arguments:
 #   dataset        : toymix | largemix | rxrx3 | largemix_rxrx3 | toymix_rxrx3
 #   datacache_path : override datacache directory (default: per-dataset)
 #
 # Examples:
-#   bash scripts/run_prepare_data.sh largemix_rxrx3
-#   bash scripts/run_prepare_data.sh toymix
+#   bash scripts/01_prepare_data.sh largemix_rxrx3
+#   bash scripts/01_prepare_data.sh toymix
 
 set -euo pipefail
 cd "$(dirname "$0")/.."

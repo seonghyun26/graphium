@@ -13,6 +13,7 @@ Refer to the LICENSE file for the full terms and conditions.
 
 from typing import Iterable, List, Dict, Literal, Tuple, Union, Callable, Any, Optional, Type
 from torch_geometric.data import Batch
+from torch_geometric.utils import to_dense_adj
 from graphium.ipu.to_dense_batch import to_dense_batch, to_sparse_batch
 from loguru import logger
 
@@ -1898,9 +1899,23 @@ class GraphOutputNN(nn.Module, MupMixin):
         # Check if pair_dim is set for direct pair-feature pooling.
         # When set (typically for PairMixer models), predictions are made
         # from the pair representation z rather than node features:
-        #   graph-level: pool (B, N, N, D_z) → (B, D_z)
+        #   graph-level: pool (B, N, N, D_z) → (B, D_z)       [pair_pool="mean"]
+        #                pool (B, N, N, D_z) → (B, 6*D_z)     [pair_pool="stats"]
         #   node-level:  pool (B, N, N, D_z) → (total_nodes, D_z)
         self.pair_dim = graph_output_nn_kwargs[self.task_level].get("pair_dim", None)
+
+        # Pooling mode for the pair track (graph-level only). "stats" computes
+        # graph-aware mean+std across three strata (diagonal, 1-hop, global),
+        # yielding 6 * pair_dim features. "mean" computes a simple masked mean,
+        # yielding pair_dim features (legacy behaviour).
+        # Default is "mean" for backward compat with checkpoints that predate
+        # the stats mode; new configs explicitly set pair_pool: stats.
+        self.pair_pool = graph_output_nn_kwargs[self.task_level].get("pair_pool", "mean")
+        if self.pair_pool not in ("mean", "stats"):
+            raise ValueError(
+                f"Invalid pair_pool={self.pair_pool!r}, must be 'mean' or 'stats'."
+            )
+        self._pair_pool_mult = 6 if self.pair_pool == "stats" else 1
 
         if self.task_level == "nodepair":
             level_in_dim = 2 * self.in_dim
@@ -1908,13 +1923,14 @@ class GraphOutputNN(nn.Module, MupMixin):
             level_in_dim = self.in_dim_edges
         elif self.task_level == "graph":
             if self.pair_dim is not None:
-                level_in_dim = self.pair_dim
+                level_in_dim = self.pair_dim * self._pair_pool_mult
             else:
                 self.global_pool_layer, self.out_pool_dim = self._parse_pooling_layer(
                     self.in_dim, graph_output_nn_kwargs[self.task_level]["pooling"]
                 )
                 level_in_dim = self.out_pool_dim
         elif self.task_level == "node" and self.pair_dim is not None:
+            # Node-level pair pooling always uses simple masked mean.
             level_in_dim = self.pair_dim
         else:
             level_in_dim = self.in_dim
@@ -1925,7 +1941,7 @@ class GraphOutputNN(nn.Module, MupMixin):
         name = graph_output_nn_kwargs[self.task_level].pop("name", "post-NN")
         filtered_graph_output_nn_kwargs = {
             k: v for k, v in graph_output_nn_kwargs[self.task_level].items()
-            if k not in ["pooling", "in_dim", "pair_dim"]
+            if k not in ["pooling", "in_dim", "pair_dim", "pair_pool"]
         }
         self.graph_output_nn = FeedForwardNN(
             in_dim=level_in_dim, name=name, **filtered_graph_output_nn_kwargs
@@ -1949,7 +1965,10 @@ class GraphOutputNN(nn.Module, MupMixin):
         # Check if at least one graph-level task is present
         if self.task_level == "graph":
             if self.pair_dim is not None and hasattr(g, "pair_feat") and g.pair_feat is not None:
-                g["graph_feat"] = self._pool_pair_feat(g)
+                if self.pair_pool == "stats":
+                    g["graph_feat"] = self._pool_pair_stats(g)
+                else:
+                    g["graph_feat"] = self._pool_pair_feat(g)
             else:
                 g["graph_feat"] = self._pool_layer_forward(g, g["feat"])
 
@@ -2072,6 +2091,94 @@ class GraphOutputNN(nn.Module, MupMixin):
         mask_j = mask.sum(dim=-1, keepdim=True).clamp(min=1)  # (B, N, 1)
         node_feat = (z * mask.unsqueeze(-1)).sum(dim=2) / mask_j  # (B, N, D_z)
         return to_sparse_batch(node_feat, mask_idx=g._pair_dense_idx)  # (total_nodes, D_z)
+
+    def _build_pair_strata_masks(
+        self, g: Batch
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        r"""Build the three stratum masks used by graph-aware stats pooling.
+
+        Each mask is the AND of the stratum-specific selector with
+        ``g.pair_mask`` so padding pairs are always zero.
+
+        Parameters:
+            g: pyg Batch with ``pair_mask`` (B, N, N), ``batch``
+               (total_nodes,), and ``edge_index`` (2, num_edges).
+
+        Returns:
+            Tuple of three (B, N, N) tensors matching ``pair_mask`` dtype:
+              - ``mask_diag``:  1 on valid self-pairs (i==j).
+              - ``mask_1hop``:  1 on valid bonded pairs.
+              - ``mask_global``: 1 on any valid pair (same as ``pair_mask``).
+        """
+        pair_mask = g.pair_mask                         # (B, N, N)
+        _, N, _ = pair_mask.shape
+        device = pair_mask.device
+        dtype = pair_mask.dtype
+
+        # Diagonal: identity broadcast, masked by validity.
+        eye = torch.eye(N, device=device, dtype=dtype).unsqueeze(0)  # (1, N, N)
+        mask_diag = eye * pair_mask
+
+        # 1-hop: dense adjacency from edge_index, automatically aligned with
+        # pair_mask because both use the same batch vector.  Graphium's
+        # featurizer emits both directions of every bond, so the adjacency
+        # is already symmetric.
+        adj = to_dense_adj(
+            g.edge_index, batch=g.batch, max_num_nodes=N,
+        ).to(dtype=dtype)                                            # (B, N, N)
+        mask_1hop = (adj > 0).to(dtype=dtype) * pair_mask
+
+        return mask_diag, mask_1hop, pair_mask
+
+    def _pool_pair_stats(self, g: Batch) -> torch.Tensor:
+        r"""Graph-aware statistics pooling of the pair representation.
+
+        Stratifies the pair tensor into three groups — diagonal (i==j),
+        1-hop (bonded pairs), and global (all valid pairs) — and computes
+        the mean and standard deviation of each stratum.  The six resulting
+        (B, D_z) tensors are concatenated along the feature axis, giving a
+        (B, 6 * D_z) output ordered as
+        ``[mean_diag, mean_1hop, mean_global, std_diag, std_1hop, std_global]``.
+
+        The std uses the numerically stable identity
+        ``var = E[x**2] - E[x]**2`` with a ``clamp(min=1e-6)`` before
+        ``sqrt``.  Empty strata (e.g., a single-atom graph has no 1-hop
+        pairs) yield zero mean and zero std via a per-graph availability
+        gate.
+
+        Parameters:
+            g: pyg Batch with ``pair_feat`` (B, N, N, D_z), ``pair_mask``,
+               ``edge_index``, and ``batch``.
+
+        Returns:
+            torch.Tensor of shape (num_graphs, 6 * D_z).
+        """
+        z = g.pair_feat                                 # (B, N, N, D_z)
+        z2 = z * z
+
+        mask_diag, mask_1hop, mask_global = self._build_pair_strata_masks(g)
+
+        def _stratum_stats(mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+            m4 = mask.unsqueeze(-1)                     # (B, N, N, 1)
+            raw_count = mask.sum(dim=(1, 2))            # (B,)
+            count = raw_count.clamp(min=1.0).unsqueeze(-1)  # (B, 1)
+            sum_z = (z * m4).sum(dim=(1, 2))            # (B, D_z)
+            sum_z2 = (z2 * m4).sum(dim=(1, 2))          # (B, D_z)
+            mean = sum_z / count
+            mean_sq = sum_z2 / count
+            var = (mean_sq - mean * mean).clamp(min=1e-6)
+            std = var.sqrt()
+            has_any = (raw_count > 0).to(z.dtype).unsqueeze(-1)  # (B, 1)
+            return mean * has_any, std * has_any
+
+        mean_diag,   std_diag   = _stratum_stats(mask_diag)
+        mean_1hop,   std_1hop   = _stratum_stats(mask_1hop)
+        mean_global, std_global = _stratum_stats(mask_global)
+
+        return torch.cat(
+            [mean_diag, mean_1hop, mean_global, std_diag, std_1hop, std_global],
+            dim=-1,
+        )                                                # (B, 6 * D_z)
 
     def compute_nodepairs(
         self,

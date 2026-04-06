@@ -31,6 +31,7 @@ from torch.utils.checkpoint import checkpoint as _checkpoint
 from torch_geometric.data import Batch
 
 from graphium.nn.base_graph_layer import BaseGraphModule
+from graphium.nn.base_layers import MoELayer
 from graphium.ipu.to_dense_batch import to_dense_batch, to_sparse_batch
 from graphium.utils.decorators import classproperty
 
@@ -95,10 +96,11 @@ class PairMixerLayerPyg(BaseGraphModule):
         tri_mul_mode: str = "einsum",
         force_float32_einsums: bool = True,
         parallel_pair_ops: bool = False,
-        # Accept and ignore pairformer-specific kwargs for config compat
+        # ---- Mixture-of-Experts on the pair-track transition ----
         moe_num_experts: int = 0,
         moe_top_k: int = 2,
         moe_aux_loss_coeff: float = 0.01,
+        # Accept and ignore pairformer-specific kwargs for config compat
         num_heads: int = 8,
         pairwise_head_width: int = 32,
         pairwise_num_heads: int = 4,
@@ -137,8 +139,25 @@ class PairMixerLayerPyg(BaseGraphModule):
             force_float32=force_float32_einsums,
         )
 
-        # ---- Pair track: transition MLP ----
-        self.transition_z = Transition(pair_dim, int(pair_dim * hidden_dim_scaling))
+        # ---- Pair track: transition MLP (or MoE) ----
+        z_hidden = int(pair_dim * hidden_dim_scaling)
+        if moe_num_experts > 0:
+            # Graph-level routing on a pooled pair signal (mirrors
+            # _pool_pair_feat in global_architectures.py): the flattened
+            # (B, N*N, D_z) view is masked-mean-pooled by MoELayer._forward_dense,
+            # producing the same graph-level vector as averaging over (i, j).
+            self.transition_z = MoELayer(
+                expert_cls=Transition,
+                expert_kwargs={"dim": pair_dim, "hidden": z_hidden},
+                router_dim=pair_dim,
+                num_experts=moe_num_experts,
+                top_k=moe_top_k,
+                aux_loss_coeff=moe_aux_loss_coeff,
+            )
+            self.use_moe = True
+        else:
+            self.transition_z = Transition(pair_dim, z_hidden)
+            self.use_moe = False
 
         # ---- Output projection on node features (if in_dim != out_dim) ----
         # Node features pass through unchanged (s_backbone = s_init),
@@ -162,6 +181,10 @@ class PairMixerLayerPyg(BaseGraphModule):
         (Note: the paper's Algorithm 1 writes Incoming→Outgoing, but the
         code that produced the published results uses Outgoing→Incoming,
         consistent with the Pairformer/Boltz convention.)
+
+        When MoE is enabled, the transition is applied *outside* this
+        function (see ``forward``) so that its aux_loss gradient path
+        survives the gradient-checkpointing boundary.
         """
         if self.parallel_pair_ops:
             dmask1 = _get_dropout_mask(self.pair_dropout, z, self.training)
@@ -175,7 +198,8 @@ class PairMixerLayerPyg(BaseGraphModule):
             dmask = _get_dropout_mask(self.pair_dropout, z, self.training)
             z = z + dmask * self.tri_mul_in(z, mask=pair_mask)
 
-        z = z + self.transition_z(z)
+        if not self.use_moe:
+            z = z + self.transition_z(z)
         return z
 
     def forward(self, batch: Batch) -> Batch:
@@ -219,6 +243,17 @@ class PairMixerLayerPyg(BaseGraphModule):
             )
         else:
             z = self._pair_track_ops(z, pair_mask)
+
+        # ---- MoE transition on the pair track (outside checkpoint) ----
+        # Kept out of ``_pair_track_ops`` so the MoE ``aux_loss`` autograd
+        # graph is not torn down by ``torch.utils.checkpoint`` — mirrors
+        # how Pairformer keeps its MoE ``transition_s`` outside the
+        # checkpointed pair-track block.
+        if self.use_moe:
+            B, N, _, D = z.shape
+            z_flat = z.reshape(B, N * N, D)
+            mask_flat = pair_mask.reshape(B, N * N)
+            z = z + self.transition_z(z_flat, node_mask=mask_flat).reshape(B, N, N, D)
 
         # ---- Node features: pass through unchanged ----
         s_dense = self.out_proj(s_dense)

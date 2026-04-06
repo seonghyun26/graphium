@@ -253,5 +253,115 @@ class TestPairformerMasking(ut.TestCase):
         torch.testing.assert_close(feat1, feat2, atol=1e-2, rtol=1e-2)
 
 
+class TestGraphOutputNNPairStatsPooling(ut.TestCase):
+    """Graph-aware statistics pooling in GraphOutputNN (for PairMixer)."""
+
+    pair_dim = 8
+    node_dim = 16
+
+    def _make_batch(self, n_list, seed=0):
+        """Build a PyG Batch with synthetic pair_feat, pair_mask, edge_index."""
+        rng = torch.Generator().manual_seed(seed)
+        graphs = []
+        for n in n_list:
+            if n > 1:
+                src = torch.arange(n - 1)
+                dst = torch.arange(1, n)
+                edge_index = torch.stack([torch.cat([src, dst]), torch.cat([dst, src])])
+            else:
+                edge_index = torch.zeros(2, 0, dtype=torch.long)
+            feat = torch.randn(n, self.node_dim, generator=rng)
+            graphs.append(Data(feat=feat, edge_index=edge_index))
+        batch = Batch.from_data_list(graphs)
+        B = len(n_list)
+        N = max(n_list)
+        pair_feat = torch.randn(B, N, N, self.pair_dim, generator=rng)
+        pair_mask = torch.zeros(B, N, N)
+        for b, n in enumerate(n_list):
+            pair_mask[b, :n, :n] = 1.0
+        batch.pair_feat = pair_feat
+        batch.pair_mask = pair_mask
+        batch._pair_dense_idx = torch.zeros(batch.num_nodes, dtype=torch.bool)
+        return batch
+
+    def _make_head(self, pair_pool):
+        from graphium.nn.architectures.global_architectures import GraphOutputNN
+        return GraphOutputNN(
+            in_dim=self.node_dim, in_dim_edges=0, task_level="graph",
+            graph_output_nn_kwargs={"graph": {
+                "pair_dim": self.pair_dim,
+                "pair_pool": pair_pool,
+                "hidden_dims": [self.pair_dim * (6 if pair_pool == "stats" else 1)],
+                "out_dim": 4,
+                "depth": 2,
+                "activation": "relu",
+            }},
+        )
+
+    def test_stats_output_shape(self):
+        head = self._make_head("stats")
+        out = head(self._make_batch([3, 5, 4], seed=1))
+        self.assertEqual(out.shape, (3, 4))
+
+    def test_level_in_dim_is_6x_pair_dim(self):
+        head = self._make_head("stats")
+        self.assertEqual(head._pair_pool_mult, 6)
+        self.assertEqual(head.graph_output_nn.full_dims[0], 6 * self.pair_dim)
+
+    def test_mean_pool_level_in_dim_is_pair_dim(self):
+        """Regression: mean mode still uses pair_dim as level_in_dim."""
+        head = self._make_head("mean")
+        self.assertEqual(head._pair_pool_mult, 1)
+        self.assertEqual(head.graph_output_nn.full_dims[0], self.pair_dim)
+
+    def test_stats_global_matches_legacy_mean(self):
+        """The 'global' stratum mean slice must equal _pool_pair_feat."""
+        head = self._make_head("stats")
+        batch = self._make_batch([4, 3, 5], seed=7)
+        stats = head._pool_pair_stats(batch)
+        legacy = head._pool_pair_feat(batch)
+        # Layout: [mean_diag, mean_1hop, mean_global, std_diag, std_1hop, std_global]
+        global_mean = stats[:, 2 * self.pair_dim:3 * self.pair_dim]
+        torch.testing.assert_close(global_mean, legacy, atol=1e-6, rtol=1e-5)
+
+    def test_empty_1hop_zero(self):
+        """A single-atom graph has no 1-hop pairs → mean_1hop = std_1hop = 0."""
+        head = self._make_head("stats")
+        batch = self._make_batch([1, 4], seed=11)
+        stats = head._pool_pair_stats(batch)
+        mean_1hop = stats[0, self.pair_dim:2 * self.pair_dim]
+        std_1hop = stats[0, 4 * self.pair_dim:5 * self.pair_dim]
+        torch.testing.assert_close(mean_1hop, torch.zeros_like(mean_1hop))
+        torch.testing.assert_close(std_1hop, torch.zeros_like(std_1hop))
+
+    def test_no_nan_with_padding(self):
+        """Huge sentinel values in padded positions must be masked out."""
+        head = self._make_head("stats")
+        n_list = [2, 6, 4]
+        batch = self._make_batch(n_list, seed=19)
+        for b, n in enumerate(n_list):
+            batch.pair_feat[b, n:, :, :] = 1e6
+            batch.pair_feat[b, :, n:, :] = 1e6
+        stats = head._pool_pair_stats(batch)
+        self.assertFalse(torch.isnan(stats).any())
+        self.assertFalse(torch.isinf(stats).any())
+        self.assertLess(stats.abs().max().item(), 1e3)
+
+    def test_invalid_pair_pool_raises(self):
+        from graphium.nn.architectures.global_architectures import GraphOutputNN
+        with self.assertRaises(ValueError):
+            GraphOutputNN(
+                in_dim=self.node_dim, in_dim_edges=0, task_level="graph",
+                graph_output_nn_kwargs={"graph": {
+                    "pair_dim": self.pair_dim,
+                    "pair_pool": "median",  # invalid
+                    "hidden_dims": [8],
+                    "out_dim": 4,
+                    "depth": 2,
+                    "activation": "relu",
+                }},
+            )
+
+
 if __name__ == "__main__":
     ut.main()

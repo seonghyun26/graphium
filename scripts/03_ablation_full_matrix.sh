@@ -15,7 +15,7 @@
 #             + 17 x 22 ADMET finetuning runs = 374 finetuning runs
 #
 # Usage:
-#   bash scripts/05_ablation_full_matrix.sh [gpu_id]
+#   bash scripts/03_ablation_full_matrix.sh [gpu_id]
 #
 # Environment variables:
 #   MODEL, DIM, GNN_DEPTH, BATCH_SIZE  - see 00_pretrain.sh

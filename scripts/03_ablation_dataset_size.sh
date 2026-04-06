@@ -21,7 +21,7 @@
 #   2. Fine-tune on ADMET                  (00_finetune_admet.sh)
 #
 # Usage:
-#   bash scripts/04_ablation_dataset_size.sh [gpu_id]
+#   bash scripts/03_ablation_dataset_size.sh [gpu_id]
 #
 # Environment variables (optional):
 #   MODEL      : model architecture (default: gpspp)

@@ -25,5 +25,6 @@ architecture:
   graph_output_nn:
     graph:
       pair_dim: 64               # Pool pair_feat directly
+      pair_pool: stats           # graph-aware stats pooling (level_in_dim = 6*pair_dim)
       hidden_dims: 192
       out_dim: 256

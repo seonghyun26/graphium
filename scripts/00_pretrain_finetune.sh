@@ -2,7 +2,7 @@
 # Pre-train a model, then fine-tune the resulting checkpoint on all 22 ADMET tasks.
 #
 # Usage:
-#   bash scripts/03_pretrain_finetune.sh <model> <dataset> [gpu_id]
+#   bash scripts/00_pretrain_finetune.sh <model> <dataset> [gpu_id]
 #
 # Arguments:
 #   model    : gcn | mpnn | gpspp | gpspp_800M | pairformer | pairformer_boltz
@@ -18,9 +18,9 @@
 #   EXTRA_FINETUNE_FLAGS : extra Hydra overrides for fine-tuning
 #
 # Examples:
-#   bash scripts/03_pretrain_finetune.sh gpspp_800M largemix_dti_filtered 1
-#   bash scripts/03_pretrain_finetune.sh pairformer_boltz toymix_dti_10k_filtered 5
-#   UNFREEZE_DEPTH=4 bash scripts/03_pretrain_finetune.sh gpspp toymix 0
+#   bash scripts/00_pretrain_finetune.sh gpspp_800M largemix_dti_filtered 1
+#   bash scripts/00_pretrain_finetune.sh pairformer_boltz toymix_dti_10k_filtered 5
+#   UNFREEZE_DEPTH=4 bash scripts/00_pretrain_finetune.sh gpspp toymix 0
 
 set -euo pipefail
 

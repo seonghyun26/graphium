@@ -81,7 +81,7 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-48}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
-    pairmixer_small|pairmixer_medium|pairmixer_boltz)
+    pairmixer_small|pairmixer_small_mean|pairmixer_medium|pairmixer_boltz)
         ;;  # dims, depth, batch size all in YAML configs
     *)
         echo "Error: unknown model '${MODEL}'."
@@ -233,7 +233,7 @@ case "${MODEL}" in
     pairformer_medium) DIM_FLAGS="" ;;  # dims set in model config
     pairformer_large)  DIM_FLAGS="" ;;  # dims set in model config
     pairformer_boltz)  DIM_FLAGS="" ;;  # dims set in model config
-    pairmixer_small|pairmixer_medium|pairmixer_boltz)  DIM_FLAGS="" ;;
+    pairmixer_small|pairmixer_small_mean|pairmixer_medium|pairmixer_boltz)  DIM_FLAGS="" ;;
 esac
 
 # ── Optional: sample_size for dataset size ablation ──────────────────────────
@@ -266,7 +266,7 @@ fi
 # Models with dedicated configs set depth internally; don't override via CLI.
 DEPTH_FLAGS=""
 case "${MODEL}" in
-    gpspp_800M|gpspp_800M_moe|gpspp_768|pairformer|pairformer_small|pairformer_medium|pairformer_large|pairformer_boltz|pairmixer_small|pairmixer_medium|pairmixer_boltz)
+    gpspp_800M|gpspp_800M_moe|gpspp_768|pairformer|pairformer_small|pairformer_medium|pairformer_large|pairformer_boltz|pairmixer_small|pairmixer_small_mean|pairmixer_medium|pairmixer_boltz)
         ;;  # depth comes from model config
     *)
         DEPTH_FLAGS="++architecture.gnn.depth=${GNN_DEPTH}"

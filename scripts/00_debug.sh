@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Quick sanity-check: run a small model for a few epochs.
-# Usage: bash scripts/06_debug.sh [model] [dataset] [gpu_id]
+# Usage: bash scripts/00_debug.sh [model] [dataset] [gpu_id]
 
 source "$(dirname "$0")/common.sh"
 

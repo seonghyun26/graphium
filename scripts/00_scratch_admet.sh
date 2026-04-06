@@ -3,7 +3,7 @@
 # This serves as the baseline for the dataset ablation study.
 #
 # Usage:
-#   bash scripts/02_scratch_admet.sh <model> [gpu_id]
+#   bash scripts/00_scratch_admet.sh <model> [gpu_id]
 #
 # Arguments:
 #   model  : gcn | mpnn | gpspp | gpspp_800M | pairformer | pairformer_boltz
@@ -15,10 +15,10 @@
 #   BATCH_SIZE : batch size (default: model-specific)
 #
 # Examples:
-#   bash scripts/02_scratch_admet.sh gpspp 0
-#   bash scripts/02_scratch_admet.sh gpspp_800M 4
-#   bash scripts/02_scratch_admet.sh pairformer_boltz 5
-#   DIM=1024 bash scripts/02_scratch_admet.sh gcn 1
+#   bash scripts/00_scratch_admet.sh gpspp 0
+#   bash scripts/00_scratch_admet.sh gpspp_800M 4
+#   bash scripts/00_scratch_admet.sh pairformer_boltz 5
+#   DIM=1024 bash scripts/00_scratch_admet.sh gcn 1
 
 source "$(dirname "$0")/common.sh"
 

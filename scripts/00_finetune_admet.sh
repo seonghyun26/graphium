@@ -2,7 +2,7 @@
 # Fine-tune a pre-trained model on all 22 ADMET benchmark tasks.
 #
 # Usage:
-#   bash scripts/01_finetune_admet.sh <model> <checkpoint> [gpu_id]
+#   bash scripts/00_finetune_admet.sh <model> <checkpoint> [gpu_id]
 #
 # Arguments:
 #   model      : gcn | mpnn | gpspp | gpspp_800M
@@ -18,8 +18,8 @@
 #   PRETRAIN_DATASET     : pretrain dataset name for W&B tags (default: auto-detect from ckpt path)
 #
 # Examples:
-#   bash scripts/01_finetune_admet.sh gpspp ./checkpoints/gpspp_largemix.ckpt 0
-#   UNFREEZE_DEPTH=4 EPOCH_UNFREEZE_ALL=40 bash scripts/01_finetune_admet.sh gcn ./ckpt.ckpt 1
+#   bash scripts/00_finetune_admet.sh gpspp ./checkpoints/gpspp_largemix.ckpt 0
+#   UNFREEZE_DEPTH=4 EPOCH_UNFREEZE_ALL=40 bash scripts/00_finetune_admet.sh gcn ./ckpt.ckpt 1
 
 source "$(dirname "$0")/common.sh"
 
@@ -53,6 +53,9 @@ case "${MODEL}" in
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
     pairformer_small|pairformer_medium|pairformer_large)
+        DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
+        ;;
+    pairmixer_small|pairmixer_small_mean|pairmixer_medium|pairmixer_boltz)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
     *)

@@ -60,12 +60,15 @@ All experiment scripts live in `scripts/` and share configuration via `common.sh
 |--------|---------|
 | `common.sh` | Shared configuration (W&B, task lists, dimension helpers) |
 | `00_pretrain.sh` | Pre-train any model on any dataset |
-| `01_finetune_admet.sh` | Fine-tune a checkpoint on all 22 ADMET tasks |
-| `02_scratch_admet.sh` | Train from scratch on ADMET (no pre-training baseline) |
+| `00_finetune_admet.sh` | Fine-tune a checkpoint on all 22 ADMET tasks |
+| `00_scratch_admet.sh` | Train from scratch on ADMET (no pre-training baseline) |
+| `00_pretrain_finetune.sh` | End-to-end: pre-train then fine-tune |
+| `00_debug.sh` | Quick sanity check (3 epochs, 10 batches) |
+| `01_prepare_data.sh` | Pre-cache featurized molecular graphs |
+| `02_pilot_moe.sh` | MoE pilot: pre-train and/or fine-tune with Mixture of Experts |
 | `03_ablation_dataset_type.sh` | Ablation study: pre-training dataset type |
-| `04_ablation_dataset_size.sh` | Ablation study: pre-training dataset size |
-| `05_ablation_full_matrix.sh` | Full ablation matrix (type x size) |
-| `06_debug.sh` | Quick sanity check (3 epochs, 10 batches) |
+| `03_ablation_dataset_size.sh` | Ablation study: pre-training dataset size |
+| `03_ablation_full_matrix.sh` | Full ablation matrix (type x size) |
 
 Old scripts are preserved in `scripts/_archive/`.
 
@@ -79,13 +82,13 @@ bash scripts/00_pretrain.sh gpspp largemix 0
 bash scripts/00_pretrain.sh gcn largemix_rxrx3 0
 
 # Fine-tune on ADMET from a checkpoint
-bash scripts/01_finetune_admet.sh gpspp ./checkpoints/last.ckpt 0
+bash scripts/00_finetune_admet.sh gpspp ./checkpoints/last.ckpt 0
 
 # Train from scratch (baseline)
-bash scripts/02_scratch_admet.sh gpspp 0
+bash scripts/00_scratch_admet.sh gpspp 0
 
 # Debug run (tiny model, 3 epochs)
-bash scripts/06_debug.sh gpspp toymix 0
+bash scripts/00_debug.sh gpspp toymix 0
 ```
 
 ### Environment variable overrides
@@ -98,7 +101,7 @@ DIM=1024 GNN_DEPTH=16 bash scripts/00_pretrain.sh gpspp largemix 0
 
 # Fine-tuning keeps the backbone FROZEN by default (only trains the head).
 # To unfreeze layers, explicitly set:
-UNFREEZE_DEPTH=4 EPOCH_UNFREEZE_ALL=40 bash scripts/01_finetune_admet.sh gcn ./ckpt.ckpt 0
+UNFREEZE_DEPTH=4 EPOCH_UNFREEZE_ALL=40 bash scripts/00_finetune_admet.sh gcn ./ckpt.ckpt 0
 
 # Subsample pre-training data (for size ablation)
 SAMPLE_SIZE=0.1 bash scripts/00_pretrain.sh gpspp largemix 0
@@ -128,10 +131,10 @@ Fixes everything including dataset type. Varies the fraction of pre-training dat
 
 ```bash
 # Default: subsample LargeMix at {1%, 5%, 10%, 25%, 50%, 100%}
-bash scripts/04_ablation_dataset_size.sh 0
+bash scripts/03_ablation_dataset_size.sh 0
 
 # Custom fractions on RxRx3
-DATASET=rxrx3 FRACTIONS="0.1 0.5 1.0" bash scripts/04_ablation_dataset_size.sh 0
+DATASET=rxrx3 FRACTIONS="0.1 0.5 1.0" bash scripts/03_ablation_dataset_size.sh 0
 ```
 
 ### Full matrix
@@ -139,7 +142,7 @@ DATASET=rxrx3 FRACTIONS="0.1 0.5 1.0" bash scripts/04_ablation_dataset_size.sh 0
 Crosses dataset type with dataset size for a complete picture.
 
 ```bash
-bash scripts/05_ablation_full_matrix.sh 0
+bash scripts/03_ablation_full_matrix.sh 0
 ```
 
 Produces: 4 dataset types x 4 fractions + 1 scratch baseline = 17 pre-training conditions, each fine-tuned on all 22 ADMET tasks.
@@ -159,7 +162,7 @@ Pre-training dataset                 Downstream evaluation
 (ToyMix / LargeMix / RxRx3 / ...)   (22 ADMET tasks)
         |                                    ^
         v                                    |
-  [00_pretrain.sh]                  [01_finetune_admet.sh]
+  [00_pretrain.sh]                  [00_finetune_admet.sh]
   Multi-task GNN training    --->   Frozen backbone + task head
   on shared backbone                (only head is trained by default)
         |                                    |
@@ -168,7 +171,7 @@ Pre-training dataset                 Downstream evaluation
                     (centralized metrics, auto-appended per run)
                                              |
                                              v
-                    notebooks/07_results_dashboard.ipynb
+                    notebooks/00_results_dashboard.ipynb
                     (visualization: heatmaps, scaling curves, bar charts)
 ```
 
@@ -182,7 +185,7 @@ Every `graphium-train` run automatically appends a row to `results/experiment_re
 - Run metadata: model, task, seed, checkpoint path, finetuning config
 - All test metrics from the run
 
-Open `notebooks/07_results_dashboard.ipynb` to visualize:
+Open `notebooks/00_results_dashboard.ipynb` to visualize:
 - Per-task metrics table across pre-training datasets
 - Dataset type heatmap (task x dataset)
 - Dataset size scaling curves
@@ -225,16 +228,10 @@ graphium-train [...] datamodule.args.processed_graph_data_path=./datacache/large
 
 | Notebook | Purpose |
 |----------|---------|
-| `01_dataset_overview` | Explore pre-training and downstream datasets |
-| `02_data_visualization` | Distribution plots for ADMET tasks |
-| `03_model_inference` | Load a model from config and run inference |
-| `04_fingerprints` | Extract molecular fingerprints from pre-trained models |
-| `05_finetuning_admet` | Step-by-step ADMET fine-tuning tutorial |
-| `06_compare_pretrain_finetune` | Compare pre-training loss vs fine-tuning quality |
-| `07_results_dashboard` | **Main visualization**: reads from `results/` and plots ablation results |
-| `fig/01_scaling` | Publication-quality scaling curves |
-| `fig/02_ablation_activation` | Activation function ablation figures |
-| `fig/03_precision` | Precision (fp16 vs fp32) analysis |
+| `00_results_dashboard` | **Main visualization**: reads from `results/` and plots ablation results |
+| `01_dataset` | Dataset overview, embedding stats, coverage analysis, filtered dataset creation |
+| `02_ablations` | MoE ablation, Pairformer size scaling, Pairformer vs Pairmixer |
+| `03_pilot_tests` | Model inference demo, ADMET fine-tuning tutorial, embedding exploration |
 
 Dev/scratch notebooks are in `notebooks/_archive/`.
 
@@ -249,20 +246,21 @@ graphium/
     hydra-configs/            Hydra YAML configurations
   graphium/                   Core library (models, data, training)
   notebooks/
-    01-07_*.ipynb             Analysis and visualization notebooks
-    07_results_dashboard.ipynb  <-- main results visualization
+    00_results_dashboard.ipynb  <-- main results visualization
+    01_dataset.ipynb            Dataset overview and coverage analysis
+    02_ablations.ipynb          Ablation studies
+    03_pilot_tests.ipynb        Pilot tests and exploration
     fig/                      Publication figure notebooks
     _archive/                 Dev/scratch notebooks
   results/
     experiment_results.csv    Centralized metrics (auto-populated)
   scripts/
     common.sh                 Shared config
-    00_pretrain.sh             Pre-training
-    01_finetune_admet.sh       ADMET fine-tuning (frozen backbone)
-    02_scratch_admet.sh        Scratch baseline
-    03-05_ablation_*.sh        Ablation study scripts
-    06_debug.sh               Quick sanity check
-    _archive/                 Original scripts (preserved)
+    00_*.sh                   Core training (pretrain, finetune, scratch, debug)
+    01_prepare_data.sh        Data caching
+    02_pilot_moe.sh           MoE pilot experiments
+    03_ablation_*.sh          Ablation study scripts
+    _archive/                 Old/completed scripts
   datacache/                  Cached featurized graphs
 ```
 

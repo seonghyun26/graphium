@@ -1,0 +1,22 @@
+# @package _global_
+# PairMixer (boltz dims) with Mixture-of-Experts on the pair-track transition.
+#
+# Same backbone as pairmixer_boltz (D_s=384, D_z=128, depth=48) but the
+# per-layer ``transition_z`` FFN is wrapped in a 4-expert top-2 MoE.
+# Routing is graph-level: every (i, j) pair in a graph is processed by the
+# same top-k experts, chosen from a masked-mean of the pair representation
+# — the same signal used by _pool_pair_feat in GraphOutputNN.
+#
+# Only top-2 of the 4 experts are active per molecule, so FLOPs scale by
+# ~top_k / 1 = 2x on the transition, while parameters scale by ~4x on that
+# block. Task-head dims (graph_output_nn) are intentionally unchanged.
+
+defaults:
+  - pairmixer_boltz
+
+architecture:
+  gnn:
+    layer_kwargs:
+      moe_num_experts: 4
+      moe_top_k: 2
+      moe_aux_loss_coeff: 0.01

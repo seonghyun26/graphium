@@ -90,7 +90,7 @@ For finetuning, `FullGraphFinetuningNetwork` wraps a `PretrainedModel` + optiona
 
 ### Results system
 
-Every `graphium-train` run appends to `results/experiment_results.csv` with metadata (model, task, seed, finetuning config) + all test metrics. The notebook `notebooks/07_results_dashboard.ipynb` reads this CSV for visualization.
+Every `graphium-train` run appends to `results/experiment_results.csv` with metadata (model, task, seed, finetuning config) + all test metrics. The notebook `notebooks/00_results_dashboard.ipynb` reads this CSV for visualization.
 
 ## Key conventions
 
