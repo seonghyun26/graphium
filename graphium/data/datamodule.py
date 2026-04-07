@@ -57,7 +57,7 @@ from graphium.features import (
     mol_to_pyggraph,
 )
 
-from graphium.data.sampler import DatasetSubSampler
+from graphium.data.sampler import DatasetSubSampler, SizeBucketSampler
 from graphium.data.utils import graphium_package_path, found_size_mismatch
 from graphium.utils.arg_checker import check_arg_iterator
 from graphium.utils.hashing import get_md5_hash

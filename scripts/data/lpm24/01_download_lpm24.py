@@ -68,6 +68,19 @@ def main():
     cap_lens = df["caption"].str.len()
     print(f"  Caption length:  min={cap_lens.min()}, median={int(cap_lens.median())}, max={cap_lens.max()}")
 
+    # RDKit SMILES validity check (count only, no filtering)
+    try:
+        from rdkit import Chem
+
+        smiles_list = df["molecule"].tolist()
+        n_valid = sum(1 for s in smiles_list if Chem.MolFromSmiles(s) is not None)
+        n_invalid = len(smiles_list) - n_valid
+        print(f"  RDKit valid:     {n_valid:,}/{len(smiles_list):,} ({100*n_valid/len(smiles_list):.1f}%)")
+        if n_invalid > 0:
+            print(f"  RDKit invalid:   {n_invalid:,}")
+    except ImportError:
+        print("  RDKit not available, skipping SMILES validity check")
+
     # Save as parquet
     parquet_path = os.path.join(args.output_dir, "lpm24_raw.parquet")
     df.to_parquet(parquet_path, index=False)
