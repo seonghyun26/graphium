@@ -1,0 +1,23 @@
+# @package _global_
+
+constants:
+  name: toymix_pairformer_17M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: ../datacache/neurips2023-small/
+
+datamodule:
+  args:
+    batch_size_training: 32
+    batch_size_inference: 32
+    num_workers: 0
+    persistent_workers: false
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/small-dataset/pairformer_17M/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed

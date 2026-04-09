@@ -21,16 +21,16 @@ Concrete model definitions: layer type, depth, hidden dims, normalization, and a
 | `gpspp_800M_moe.yaml` | GPS++ 800M with mixture-of-experts FFN |
 | `gpspp_deep.yaml` | Deeper GPS++ variant |
 | `pairformer.yaml` | Pairformer base |
-| `pairformer_small.yaml` / `pairformer_medium.yaml` / `pairformer_large.yaml` / `pairformer_boltz.yaml` | Pairformer scale variants |
-| `pairmixer_small.yaml` / `pairmixer_medium.yaml` / `pairmixer_boltz.yaml` | PairMixer scale variants — currently under active iteration |
-| `pairmixer_small_mean.yaml` | PairMixer variant with mean pooling (added without touching head `hidden_dims`/`out_dim`) |
+| `pairformer_17M.yaml` / `pairformer_52M.yaml` / `pairformer_boltz.yaml` | Pairformer scale variants |
+| `pairmixer_10M.yaml` / `pairmixer_boltz.yaml` | PairMixer scale variants — currently under active iteration |
+| Deleted — model was < 10M params
 
 ## For AI Agents
 
 ### Working In This Directory
 - **GPS++ dimension gotcha**: changing a GPS++ hidden dim requires matching overrides across `pre_nn.out_dim`, `pre_nn.hidden_dims`, `gnn.in_dim/out_dim/hidden_dims`, AND `gnn.layer_kwargs.mpnn_kwargs.in_dim/out_dim`. Audit the whole chain — these are not auto-linked.
 - **`constants.norm`** must be set here for any model paired with `architecture/largemix.yaml` (which references `${constants.norm}`). `gpspp_800M.yaml` is the reference for how to do this.
-- **When switching pooling modes** (e.g., adding `pairmixer_small_mean.yaml`), keep head `hidden_dims` and `out_dim` unchanged — only touch the `level_in_dim` wiring (project memory).
+- **When switching pooling modes** (e.g., adding `pairmixer_10M.yaml`), keep head `hidden_dims` and `out_dim` unchanged — only touch the `level_in_dim` wiring (project memory).
 - New model files should inherit from an existing base via `defaults: [<base>, _self_]` rather than copy-pasting the full config.
 - The Hydra override is `model=<stem>` (e.g., `model=gpspp_800M`).
 

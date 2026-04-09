@@ -265,6 +265,11 @@ def load_architecture(
     if "finetuning" not in config:
         task_heads_kwargs = omegaconf.OmegaConf.to_object(task_heads_kwargs)
 
+    # Optional: multi-layer GNN representation pooling
+    gnn_layer_pooling_kwargs = (
+        dict(cfg_arch["gnn_layer_pooling"]) if cfg_arch.get("gnn_layer_pooling", None) is not None else None
+    )
+
     # Set all the input arguments for the model
     model_kwargs = dict(
         gnn_kwargs=gnn_kwargs,
@@ -273,6 +278,7 @@ def load_architecture(
         pe_encoders_kwargs=pe_encoders_kwargs,
         graph_output_nn_kwargs=graph_output_nn_kwargs,
         task_heads_kwargs=task_heads_kwargs,
+        gnn_layer_pooling_kwargs=gnn_layer_pooling_kwargs,
     )
     # Get accelerator_kwargs if they exist
     accelerator_kwargs = config["accelerator"].get("accelerator_kwargs", None)

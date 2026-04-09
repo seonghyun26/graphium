@@ -41,6 +41,7 @@ from .pairformer_pyg import (
     TriangleMultiplicationIncoming,
     TriangleMultiplicationOutgoing,
     _get_dropout_mask,
+    _lecun_normal_init,
 )
 
 
@@ -124,10 +125,20 @@ class PairMixerLayerPyg(BaseGraphModule):
         self.parallel_pair_ops = parallel_pair_ops
 
         # ---- Pair track: outer-product mean initialization ----
-        self.opm = OuterProductMean(
-            in_dim, opm_hidden, pair_dim,
-            force_float32=force_float32_einsums,
-        )
+        # Only the first layer needs OPM (subsequent layers reuse pair_feat).
+        # This saves ~25% of parameters that would otherwise be dead.
+        if self.layer_idx is None or self.layer_idx == 0:
+            self.opm = OuterProductMean(
+                in_dim, opm_hidden, pair_dim,
+                force_float32=force_float32_einsums,
+            )
+            # Override zero-init on proj_o: PairMixer has no single-track
+            # updates to bootstrap the pair representation, so OPM must
+            # produce non-zero initial features (unlike Pairformer where
+            # the attention track provides the initial learning signal).
+            _lecun_normal_init(self.opm.proj_o.weight)
+        else:
+            self.opm = None
 
         # ---- Pair track: triangle multiplication only (no attention) ----
         self.tri_mul_out = TriangleMultiplicationOutgoing(
@@ -200,6 +211,11 @@ class PairMixerLayerPyg(BaseGraphModule):
 
         if not self.use_moe:
             z = z + self.transition_z(z)
+
+        # Re-mask padding: LayerNorm bias in triangle multiplication and
+        # transition MLP produce non-zero values at padding positions that
+        # would otherwise accumulate across layers via residual connections.
+        z = z * pair_mask.unsqueeze(-1)
         return z
 
     def forward(self, batch: Batch) -> Batch:
@@ -232,8 +248,14 @@ class PairMixerLayerPyg(BaseGraphModule):
 
         if hasattr(batch, "pair_feat") and batch.pair_feat is not None:
             z = batch.pair_feat
-        else:
+        elif self.opm is not None:
             z = self.opm(s_dense, node_mask)
+        else:
+            raise RuntimeError(
+                f"PairMixerLayerPyg (layer_idx={self.layer_idx}): "
+                "pair_feat not found on batch and no OPM available. "
+                "Only layer 0 has OPM; pair_feat must be set by a preceding layer."
+            )
 
         # ---- Pair track updates (optionally checkpointed) ----
         if self.use_checkpoint and self.training:
@@ -254,6 +276,7 @@ class PairMixerLayerPyg(BaseGraphModule):
             z_flat = z.reshape(B, N * N, D)
             mask_flat = pair_mask.reshape(B, N * N)
             z = z + self.transition_z(z_flat, node_mask=mask_flat).reshape(B, N, N, D)
+            z = z * pair_mask.unsqueeze(-1)  # re-mask after MoE transition
 
         # ---- Node features: pass through unchanged ----
         s_dense = self.out_proj(s_dense)

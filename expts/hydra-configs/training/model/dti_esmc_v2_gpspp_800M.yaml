@@ -1,0 +1,17 @@
+# @package _global_
+
+constants:
+  name: dti_esmc_v2_gpspp_800M
+  seed: 42
+  max_epochs: 100
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/dti-esmc-v2/
+
+datamodule:
+  args:
+    batch_size_training: 64
+    num_workers: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/dti-esmc-v2/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/

@@ -4,14 +4,14 @@
 # ============================================================================
 # Runs baseline vs MoE on two GPUs in parallel, then compares results.
 #
-# Default: pairmixer_small on toymix (fast; ~minutes per run).
-# Override MODEL_BASE for larger variants (e.g., pairmixer_medium).
+# Default: pairmixer_10M on toymix (fast; ~minutes per run).
+# Override MODEL_BASE for larger variants (e.g., pairmixer_10M).
 #
 # Usage:
 #   bash scripts/04_ablation_moe.sh [gpu_baseline] [gpu_moe]
 #
 # Environment variables:
-#   MODEL_BASE   : base model (default: pairmixer_small)
+#   MODEL_BASE   : base model (default: pairmixer_10M)
 #   DATASET      : dataset (default: toymix)
 #   MOE_EXPERTS  : number of experts (default: 4)
 #   MOE_TOP_K    : top-k routing (default: 2)
@@ -23,7 +23,7 @@ source "$(dirname "$0")/common.sh"
 GPU_BASE=${1:-0}
 GPU_MOE=${2:-1}
 
-MODEL_BASE=${MODEL_BASE:-pairmixer_small}
+MODEL_BASE=${MODEL_BASE:-pairmixer_10M}
 MODEL_MOE=${MODEL_BASE}_moe
 DATASET=${DATASET:-toymix}
 MOE_EXPERTS=${MOE_EXPERTS:-4}

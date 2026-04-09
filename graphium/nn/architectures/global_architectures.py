@@ -1353,6 +1353,51 @@ class FeedForwardGraph(FeedForwardNN):
         return class_str + layer_str
 
 
+class GNNLayerPooling(nn.Module):
+    """Combine intermediate GNN layer representations for downstream tasks.
+
+    Instead of using only the final GNN layer output, this module collects
+    outputs from specified intermediate layers and combines them. Inspired
+    by the multi-fingerprint probing approach from MolGPS.
+
+    Two combination modes:
+
+    - ``"weighted_sum"``: Learnable softmax-normalized scalar weights over
+      selected layer outputs.  Output dim equals ``gnn_dim`` (no change).
+    - ``"concat_proj"``: Concatenate selected layer outputs along the
+      feature dimension and project back to ``gnn_dim`` via a linear layer.
+
+    Parameters:
+        layers: GNN layer indices whose outputs to combine (0-indexed).
+        gnn_dim: Hidden dimension of each GNN layer output.
+        mode: ``"weighted_sum"`` or ``"concat_proj"``.
+    """
+
+    def __init__(self, layers: List[int], gnn_dim: int, mode: str = "weighted_sum"):
+        super().__init__()
+        self.layers = sorted(layers)
+        self.mode = mode
+        self.gnn_dim = gnn_dim
+        n_layers = len(self.layers)
+
+        if mode == "weighted_sum":
+            self.layer_weights = nn.Parameter(torch.zeros(n_layers))
+        elif mode == "concat_proj":
+            self.proj = nn.Linear(n_layers * gnn_dim, gnn_dim)
+        else:
+            raise ValueError(
+                f"Unknown gnn_layer_pooling mode: {mode!r}, expected 'weighted_sum' or 'concat_proj'"
+            )
+
+    def forward(self, readout_cache: Dict[int, Tensor]) -> Tensor:
+        layer_outputs = [readout_cache[i] for i in self.layers]
+        if self.mode == "weighted_sum":
+            weights = torch.softmax(self.layer_weights, dim=0)
+            return sum(w * out for w, out in zip(weights, layer_outputs))
+        else:  # concat_proj
+            return self.proj(torch.cat(layer_outputs, dim=-1))
+
+
 class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
     def __init__(
         self,
@@ -1362,6 +1407,7 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
         pe_encoders_kwargs: Optional[Dict[str, Any]] = None,
         task_heads_kwargs: Optional[Dict[str, Any]] = None,
         graph_output_nn_kwargs: Optional[Dict[str, Any]] = None,
+        gnn_layer_pooling_kwargs: Optional[Dict[str, Any]] = None,
         accelerator_kwargs: Optional[Dict[str, Any]] = None,
         num_inference_to_average: int = 1,
         last_layer_is_readout: bool = False,
@@ -1403,6 +1449,17 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
                 This argument is a list of dictionaries corresponding to the arguments for a FeedForwardNN.
                 Each dict of arguments is used to initialize a shared MLP.
 
+            gnn_layer_pooling_kwargs:
+                Optional dictionary to enable multi-layer GNN representation pooling.
+                When set, intermediate GNN layer outputs are combined instead of
+                using only the final layer. Keys:
+
+                - ``layers``: list of GNN layer indices (0-indexed) to combine.
+                - ``mode``: ``"weighted_sum"`` (learnable scalar weights) or
+                  ``"concat_proj"`` (concatenation + linear projection).
+
+                If ``None``, the standard single-layer (last) output is used.
+
             accelerator_kwargs:
                 key-word arguments specific to the accelerator being used,
                 e.g. pipeline split points
@@ -1433,6 +1490,7 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
         self.max_num_nodes_per_graph = None
         self.max_num_edges_per_graph = None
         self._cache_readouts = False
+        self.gnn_layer_pooling_kwargs = gnn_layer_pooling_kwargs
 
         # Initialize the pre-processing neural net for nodes (applied directly on node features)
         if pre_nn_kwargs is not None:
@@ -1462,6 +1520,16 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
         )
         self.gnn = gnn_class(**gnn_kwargs, name=name)
         next_in_dim = self.gnn.out_dim
+
+        # Initialize multi-layer GNN pooling (optional)
+        self.gnn_layer_pooling = None
+        if gnn_layer_pooling_kwargs is not None:
+            self.gnn_layer_pooling = GNNLayerPooling(
+                gnn_dim=self.gnn.out_dim,
+                **gnn_layer_pooling_kwargs,
+            )
+            # Enable readout cache so intermediate layer outputs are stored during forward
+            self.gnn._enable_readout_cache()
 
         if task_heads_kwargs is not None:
             self.task_heads = TaskHeads(
@@ -1705,6 +1773,10 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
 
         # Run the graph neural network
         g = self.gnn.forward(g)
+
+        # Combine intermediate GNN layer representations if configured
+        if self.gnn_layer_pooling is not None:
+            g["feat"] = self.gnn_layer_pooling(self.gnn._readout_cache)
 
         if self.task_heads is not None:
             return self.task_heads.forward(g)
@@ -2374,8 +2446,10 @@ class TaskHeads(nn.Module, MupMixin):
             head_kwargs.setdefault("last_layer_is_readout", last_layer_is_readout)
             # Create a new dictionary without the task_level key-value pair,
             # and pass it while initializing the FeedForwardNN instance for tasks
-            filtered_kwargs = {k: v for k, v in head_kwargs.items() if k != "task_level"}
-            filtered_kwargs["in_dim"] = self.graph_output_nn_kwargs[task_level]["out_dim"]
+            non_ff_keys = {"task_level", "aux_in_dim", "aux_label_split"}
+            filtered_kwargs = {k: v for k, v in head_kwargs.items() if k not in non_ff_keys}
+            aux_in_dim = head_kwargs.get("aux_in_dim", 0)
+            filtered_kwargs["in_dim"] = self.graph_output_nn_kwargs[task_level]["out_dim"] + aux_in_dim
             self.task_heads[task_name] = FeedForwardNN(**filtered_kwargs)
 
     def forward(self, g: Batch) -> Dict[str, torch.Tensor]:
@@ -2393,7 +2467,12 @@ class TaskHeads(nn.Module, MupMixin):
             task_level = self.task_heads_kwargs[task_name].get(
                 "task_level", None
             )  # Get task_level without modifying head_kwargs
-            task_head_outputs[task_name] = head.forward(features[task_level])
+            feat = features[task_level]
+            # Concatenate auxiliary features (e.g., protein embeddings) if present
+            aux_key = f"aux_{task_name}"
+            if hasattr(g, aux_key) and getattr(g, aux_key) is not None:
+                feat = torch.cat([feat, getattr(g, aux_key)], dim=-1)
+            task_head_outputs[task_name] = head.forward(feat)
 
         return task_head_outputs
 

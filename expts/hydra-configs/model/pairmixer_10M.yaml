@@ -1,25 +1,25 @@
 # @package _global_
-# PairMixer configuration matching pairformer_boltz dimensions
+# PairMixer medium configuration (~10M parameters)
 #
-# Same dimensions as pairformer_boltz (D_s=384, D_z=128, depth=48)
-# but with triangle attention and pair-biased attention removed.
-# This enables direct speed/performance comparison.
+# D_s=256, D_z=128, depth=18 → ~9.8M params
+# Reference: Ouyang-Zhang et al., arXiv:2510.18870
+# Code: https://github.com/genesistherapeutics/pairmixer
 
 architecture:
   pre_nn:
-    out_dim: 384
-    hidden_dims: 384
+    out_dim: 256
+    hidden_dims: 256
 
   gnn:
-    in_dim: 384
-    out_dim: 384
-    hidden_dims: 384
-    depth: 48
+    in_dim: 256
+    out_dim: 256
+    hidden_dims: 256
+    depth: 18
     residual_type: none           # PairMixer doesn't update node features (s_backbone=s_init);
                                   # simple residual would double them every layer → bf16 overflow.
     layer_type: 'pyg:pairmixer'
     layer_kwargs:
-      pair_dim: 128              # Match pairformer_boltz
+      pair_dim: 128              # Matches paper default C_z
       pair_dropout: 0.25
       hidden_dim_scaling: 4.0
       opm_hidden: 32
@@ -29,5 +29,5 @@ architecture:
     graph:
       pair_dim: 128              # Pool pair_feat directly
       pair_pool: stats           # graph-aware stats pooling (level_in_dim = 6*pair_dim)
-      hidden_dims: 384
-      out_dim: 1024
+      hidden_dims: 256
+      out_dim: 512

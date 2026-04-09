@@ -107,6 +107,7 @@ class BaseDataModule(lightning.LightningDataModule):
         batch_size_training: int = 16,
         batch_size_inference: int = 16,
         batch_size_per_pack: Optional[int] = None,
+        bucket_size_batching: bool = False,
         num_workers: int = 0,
         pin_memory: bool = True,
         persistent_workers: bool = False,
@@ -119,6 +120,8 @@ class BaseDataModule(lightning.LightningDataModule):
         Parameters:
             batch_size_training: batch size for training
             batch_size_inference: batch size for inference
+            bucket_size_batching: if True, group similarly-sized molecules into batches
+                to reduce padding waste (recommended for PairFormer/PairMixer)
             num_workers: number of workers for data loading
             pin_memory: whether to pin memory
             persistent_workers: whether to use persistent workers
@@ -130,6 +133,7 @@ class BaseDataModule(lightning.LightningDataModule):
         self.batch_size_training = batch_size_training
         self.batch_size_inference = batch_size_inference
         self.batch_size_per_pack = batch_size_per_pack
+        self.bucket_size_batching = bucket_size_batching
         if self.batch_size_per_pack is not None:
             # Check that batch_size_per_pack is a divisor of batch_size_training and batch_size_inference
             assert (
@@ -795,6 +799,7 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
         batch_size_training: int = 16,
         batch_size_inference: int = 16,
         batch_size_per_pack: Optional[int] = None,
+        bucket_size_batching: bool = False,
         num_workers: int = 0,
         pin_memory: bool = True,
         persistent_workers: bool = False,
@@ -825,6 +830,8 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
             featurization: args to apply to the SMILES to Graph featurizer.
             batch_size_training: batch size for training and val dataset.
             batch_size_inference: batch size for test dataset.
+            bucket_size_batching: if True, group similarly-sized molecules into batches
+                to reduce padding waste (recommended for PairFormer/PairMixer).
             num_workers: Number of workers for the dataloader. Use -1 to use all available
                 cores.
             pin_memory: Whether to pin on paginated CPU memory for the dataloader.
@@ -852,6 +859,7 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
             batch_size_training=batch_size_training,
             batch_size_inference=batch_size_inference,
             batch_size_per_pack=batch_size_per_pack,
+            bucket_size_batching=bucket_size_batching,
             num_workers=num_workers,
             pin_memory=pin_memory,
             persistent_workers=persistent_workers,
@@ -1487,15 +1495,34 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
         """
         kwargs = self.get_dataloader_kwargs(stage=stage, shuffle=shuffle)
         sampler = None
-        # use sampler only when sampler_task_dict is set in the config and during training
+        subsampled_indices = None
+
+        # Step 1: Get subsampled indices if task subsampling is required
         if DatasetSubSampler.check_sampling_required(self.sampler_task_dict) and stage in [
             RunningStage.TRAINING
         ]:
+            sub_sampler = DatasetSubSampler(
+                dataset, self.sampler_task_dict, self.processed_graph_data_path, self.data_hash
+            )
+            subsampled_indices = list(sub_sampler)
+
+        # Step 2: Choose sampler — bucket sampler takes priority when enabled
+        if self.bucket_size_batching and hasattr(dataset, "num_nodes_list"):
+            batch_size = kwargs.get("batch_size", self.batch_size_training)
+            sampler = SizeBucketSampler(
+                num_nodes_list=dataset.num_nodes_list,
+                batch_size=batch_size,
+                shuffle=(stage == RunningStage.TRAINING),
+                indices=subsampled_indices,
+            )
+            kwargs["shuffle"] = False
+        elif subsampled_indices is not None:
+            # Fall back to original DatasetSubSampler
             sampler = DatasetSubSampler(
                 dataset, self.sampler_task_dict, self.processed_graph_data_path, self.data_hash
             )
-            # turn shuffle off when sampler is used as sampler option is mutually exclusive with shuffle
             kwargs["shuffle"] = False
+
         is_ipu = ("ipu_options" in kwargs.keys()) and (kwargs.get("ipu_options") is not None)
         if is_ipu:
             loader = IPUDataModuleModifier._dataloader(self, dataset=dataset, sampler=sampler, **kwargs)

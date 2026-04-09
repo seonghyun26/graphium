@@ -61,17 +61,17 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-16}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
-    pairformer_small)
+    pairformer_17M)
         DIM=${DIM:-192}
         GNN_DEPTH=${GNN_DEPTH:-8}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
-    pairformer_medium)
+    pairformer_17M)
         DIM=${DIM:-256}
         GNN_DEPTH=${GNN_DEPTH:-12}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
-    pairformer_large)
+    pairformer_52M)
         DIM=${DIM:-384}
         GNN_DEPTH=${GNN_DEPTH:-16}
         BATCH_SIZE=${BATCH_SIZE:-32}
@@ -81,7 +81,7 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-48}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
-    pairmixer_small|pairmixer_small_mean|pairmixer_small_moe|pairmixer_medium|pairmixer_boltz|pairmixer_boltz_moe)
+    pairmixer_10M|pairmixer_10M_vn|pairmixer_boltz|pairmixer_boltz_moe)
         ;;  # dims, depth, batch size all in YAML configs
     *)
         echo "Error: unknown model '${MODEL}'."
@@ -122,6 +122,28 @@ case "${DATASET}" in
         TASKS=dti
         TRAINING=dti
         ARCHITECTURE=largemix
+        ;;
+    dti_v2)
+        TASKS=dti_v2
+        TRAINING=dti_v2
+        ARCHITECTURE=largemix
+        ;;
+    dti_esmc_v2)
+        TASKS=dti_esmc_v2
+        TRAINING=dti_esmc_v2
+        ARCHITECTURE=largemix
+        ;;
+    toymix_dti_v2)
+        TASKS=toymix_dti_v2
+        TRAINING=toymix_dti_v2
+        ARCHITECTURE=toymix
+        [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
+        ;;
+    toymix_dti_esmc_v2)
+        TASKS=toymix_dti_esmc_v2
+        TRAINING=toymix_dti_esmc_v2
+        ARCHITECTURE=toymix
+        [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
         ;;
     dti_filtered)
         TASKS=dti_filtered
@@ -224,7 +246,7 @@ fi
 # Cap batch size for DTI datasets (2560-dim output head needs more memory)
 # Only applies when BATCH_SIZE was explicitly set; otherwise config handles it.
 if [[ -n "${_USER_BATCH_SIZE}" ]]; then
-    if [[ "${DATASET}" == "dti" || "${DATASET}" == "dti_filtered" || "${DATASET}" == "dti_10k_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" ]]; then
+    if [[ "${DATASET}" == "dti" || "${DATASET}" == "dti_filtered" || "${DATASET}" == "dti_10k_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" || "${DATASET}" == "dti_v2" || "${DATASET}" == "dti_esmc_v2" || "${DATASET}" == "toymix_dti_v2" || "${DATASET}" == "toymix_dti_esmc_v2" ]]; then
         (( BATCH_SIZE > 128 )) && BATCH_SIZE=128
     fi
 fi
@@ -240,11 +262,10 @@ case "${MODEL}" in
     gpspp_800M_moe) DIM_FLAGS="" ;;  # gpspp_800M_moe sets dims in model config
     gpspp_768)      DIM_FLAGS="" ;;  # gpspp_768 sets dims in model config
     pairformer)        DIM_FLAGS="" ;;  # pairformer uses config defaults
-    pairformer_small)  DIM_FLAGS="" ;;  # dims set in model config
-    pairformer_medium) DIM_FLAGS="" ;;  # dims set in model config
-    pairformer_large)  DIM_FLAGS="" ;;  # dims set in model config
+    pairformer_17M)  DIM_FLAGS="" ;;  # dims set in model config
+    pairformer_52M)  DIM_FLAGS="" ;;  # dims set in model config
     pairformer_boltz)  DIM_FLAGS="" ;;  # dims set in model config
-    pairmixer_small|pairmixer_small_mean|pairmixer_small_moe|pairmixer_medium|pairmixer_boltz|pairmixer_boltz_moe)  DIM_FLAGS="" ;;
+    pairmixer_10M|pairmixer_10M_vn|pairmixer_boltz|pairmixer_boltz_moe)  DIM_FLAGS="" ;;
 esac
 
 # ── Optional: sample_size for dataset size ablation ──────────────────────────
@@ -262,7 +283,7 @@ if [[ -n "${SAMPLE_SIZE:-}" ]]; then
     if [[ "${DATASET}" == "rxrx3" || "${DATASET}" == "largemix_rxrx3" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.rxrx3.sample_size=${SAMPLE_SIZE}"
     fi
-    if [[ "${DATASET}" == "dti" || "${DATASET}" == "dti_filtered" || "${DATASET}" == "dti_10k_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" ]]; then
+    if [[ "${DATASET}" == "dti" || "${DATASET}" == "dti_filtered" || "${DATASET}" == "dti_10k_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" || "${DATASET}" == "dti_v2" || "${DATASET}" == "dti_esmc_v2" || "${DATASET}" == "toymix_dti_v2" || "${DATASET}" == "toymix_dti_esmc_v2" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.dti.sample_size=${SAMPLE_SIZE}"
     fi
     if [[ "${DATASET}" == "lpm24" || "${DATASET}" == "toymix_lpm24" ]]; then
@@ -280,7 +301,7 @@ fi
 # Models with dedicated configs set depth internally; don't override via CLI.
 DEPTH_FLAGS=""
 case "${MODEL}" in
-    gpspp_800M|gpspp_800M_moe|gpspp_768|pairformer|pairformer_small|pairformer_medium|pairformer_large|pairformer_boltz|pairmixer_small|pairmixer_small_mean|pairmixer_small_moe|pairmixer_medium|pairmixer_boltz|pairmixer_boltz_moe)
+    gpspp_800M|gpspp_800M_moe|gpspp_768|pairformer|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_10M|pairmixer_10M_vn|pairmixer_boltz|pairmixer_boltz_moe)
         ;;  # depth comes from model config
     *)
         DEPTH_FLAGS="++architecture.gnn.depth=${GNN_DEPTH}"

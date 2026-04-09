@@ -51,7 +51,7 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-16}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
-    pairformer_boltz)
+    pairformer_boltz|pairformer_17M|pairformer_52M)
         DIM=${DIM:-384}
         GNN_DEPTH=${GNN_DEPTH:-48}
         BATCH_SIZE=${BATCH_SIZE:-32}
@@ -61,12 +61,12 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-16}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
-    pairmixer_small)
+    pairmixer_10M)
         DIM=${DIM:-192}
         GNN_DEPTH=${GNN_DEPTH:-8}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
-    pairmixer_medium)
+    pairmixer_10M)
         DIM=${DIM:-256}
         GNN_DEPTH=${GNN_DEPTH:-18}
         BATCH_SIZE=${BATCH_SIZE:-32}
@@ -77,7 +77,7 @@ case "${MODEL}" in
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
     *)
-        echo "Error: unknown model '${MODEL}'. Choose from: gcn, mpnn, gpspp, gpspp_800M, pairformer, pairformer_boltz, pairmixer, pairmixer_small, pairmixer_medium, pairmixer_boltz"
+        echo "Error: unknown model '${MODEL}'. Choose from: gcn, mpnn, gpspp, gpspp_800M, pairformer_17M, pairformer_52M, pairformer_boltz, pairmixer_10M, pairmixer_boltz"
         exit 1
         ;;
 esac
@@ -91,10 +91,10 @@ case "${MODEL}" in
     gpspp)            DIM_FLAGS=$(gpspp_dim_flags "${DIM}") ;;
     gpspp_800M)       DIM_FLAGS="" ;;  # gpspp_800M sets dims in model config
     pairformer)       DIM_FLAGS="" ;;  # pairformer uses config defaults
-    pairformer_boltz) DIM_FLAGS="" ;;
+    pairformer_boltz|pairformer_17M|pairformer_52M) DIM_FLAGS="" ;;
     pairmixer)        DIM_FLAGS="" ;;
-    pairmixer_small)  DIM_FLAGS="" ;;
-    pairmixer_medium) DIM_FLAGS="" ;;
+    pairmixer_10M)  DIM_FLAGS="" ;;
+    pairmixer_10M) DIM_FLAGS="" ;;
     pairmixer_boltz)  DIM_FLAGS="" ;;  # pairformer_boltz sets dims in model config
 esac
 
@@ -102,7 +102,7 @@ esac
 # Models with dedicated configs (gpspp_800M, pairformer_*, pairmixer_*) get
 # dims/depth from their YAML — don't override via CLI.
 case "${MODEL}" in
-    gpspp_800M|pairformer|pairformer_small|pairformer_medium|pairformer_large|pairformer_boltz|pairmixer|pairmixer_small|pairmixer_medium|pairmixer_boltz)
+    gpspp_800M|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_10M|pairmixer_boltz)
         ARCH_FLAGS=""
         DATAMODULE_FLAGS="++datamodule.args.batch_size_training=${BATCH_SIZE}"
         echo "=== Training ${MODEL} from scratch on ADMET (config defaults) ==="

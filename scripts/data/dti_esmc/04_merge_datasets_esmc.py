@@ -66,9 +66,20 @@ def main():
     print(f"    Shape:    {df_emb.shape}")
     print(f"    Proteins: {df_emb['protein_id'].nunique():,}")
 
-    # Load DTI interaction data (existing ESM-2 merged parquet has the SMILES pairings)
+    # Load DTI interaction data
+    # Supports two formats:
+    #   1. Parquet with protein_id/sequence/SMILES (from ESM-2 merged pipeline)
+    #   2. CSV with Target_ID/Target/Drug (raw TDC output from stage 1)
     print(f"  Loading DTI data from {args.dti} ...")
-    df_dti = pd.read_parquet(args.dti, columns=["protein_id", "sequence", "SMILES"])
+    if args.dti.endswith(".parquet"):
+        df_dti = pd.read_parquet(args.dti, columns=["protein_id", "sequence", "SMILES"])
+    else:
+        df_raw = pd.read_csv(args.dti)
+        df_dti = df_raw.rename(columns={
+            "Target_ID": "protein_id",
+            "Target": "sequence",
+            "Drug": "SMILES",
+        })[["protein_id", "sequence", "SMILES"]]
     print(f"    Shape:        {df_dti.shape}")
     print(f"    Unique drugs: {df_dti['SMILES'].nunique():,}")
 

@@ -52,10 +52,10 @@ case "${MODEL}" in
     pairformer_boltz)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
-    pairformer_small|pairformer_medium|pairformer_large)
+    pairformer_17M|pairformer_52M)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
-    pairmixer_small|pairmixer_small_mean|pairmixer_medium|pairmixer_boltz)
+    pairmixer_10M|pairmixer_boltz)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
     *)
@@ -71,12 +71,20 @@ if [[ -z "${PRETRAIN_DATASET:-}" ]]; then
         PRETRAIN_DATASET="toymix_rxrx3_dti"
     elif [[ "${CKPT_LOWER}" == *"toymix_rxrx3"* || "${CKPT_LOWER}" == *"toymix-rxrx3"* ]]; then
         PRETRAIN_DATASET="toymix_rxrx3"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti_esmc_v2"* || "${CKPT_LOWER}" == *"toymix-dti-esmc-v2"* ]]; then
+        PRETRAIN_DATASET="toymix_dti_esmc_v2"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti_esmc"* || "${CKPT_LOWER}" == *"toymix-dti-esmc"* ]]; then
+        PRETRAIN_DATASET="toymix_dti_esmc"
     elif [[ "${CKPT_LOWER}" == *"toymix_dti_10k_filtered"* || "${CKPT_LOWER}" == *"toymix-dti-10k-filtered"* ]]; then
         PRETRAIN_DATASET="toymix_dti_10k_filtered"
     elif [[ "${CKPT_LOWER}" == *"toymix_dti_filtered"* || "${CKPT_LOWER}" == *"toymix-dti-filtered"* ]]; then
         PRETRAIN_DATASET="toymix_dti_filtered"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti_v2"* || "${CKPT_LOWER}" == *"toymix-dti-v2"* ]]; then
+        PRETRAIN_DATASET="toymix_dti_v2"
     elif [[ "${CKPT_LOWER}" == *"toymix_dti"* || "${CKPT_LOWER}" == *"toymix-dti"* ]]; then
         PRETRAIN_DATASET="toymix_dti"
+    elif [[ "${CKPT_LOWER}" == *"toymix_lpm24"* || "${CKPT_LOWER}" == *"toymix-lpm24"* ]]; then
+        PRETRAIN_DATASET="toymix_lpm24"
     elif [[ "${CKPT_LOWER}" == *"rxrx3_dti"* || "${CKPT_LOWER}" == *"rxrx3-dti"* ]]; then
         PRETRAIN_DATASET="rxrx3_dti"
     elif [[ "${CKPT_LOWER}" == *"largemix_rxrx3"* || "${CKPT_LOWER}" == *"largemix-rxrx3"* ]]; then
@@ -116,8 +124,12 @@ if [[ -z "${FINETUNING_CONFIG:-}" ]]; then
         largemix_dti)   FINETUNING_CONFIG="admet_largemix_dti" ;;      # sub_module: dti
         largemix_dti_filtered) FINETUNING_CONFIG="admet_largemix_dti_filtered" ;; # sub_module: dti
         toymix_dti)     FINETUNING_CONFIG="admet_toymix_dti" ;;        # sub_module: dti
+        toymix_dti_v2)  FINETUNING_CONFIG="admet_toymix_dti" ;;       # sub_module: dti
+        toymix_dti_esmc) FINETUNING_CONFIG="admet_toymix_dti" ;;      # sub_module: dti
+        toymix_dti_esmc_v2) FINETUNING_CONFIG="admet_toymix_dti" ;;   # sub_module: dti
         toymix_dti_10k_filtered) FINETUNING_CONFIG="admet_toymix_dti_10k_filtered" ;; # sub_module: dti
         toymix_dti_filtered) FINETUNING_CONFIG="admet_toymix_dti_filtered" ;; # sub_module: dti
+        toymix_lpm24)   FINETUNING_CONFIG="admet_toymix_lpm24" ;;     # sub_module: lpm24
         rxrx3_dti)      FINETUNING_CONFIG="admet_rxrx3_dti" ;;       # sub_module: dti
         toymix_rxrx3_dti) FINETUNING_CONFIG="admet_toymix_rxrx3_dti" ;;  # sub_module: dti
         largemix_rxrx3_dti) FINETUNING_CONFIG="admet_largemix_rxrx3_dti" ;; # sub_module: dti

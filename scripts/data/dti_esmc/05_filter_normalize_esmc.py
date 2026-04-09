@@ -208,6 +208,12 @@ def main():
         help="Random seed for reproducibility (default: 42)",
     )
     parser.add_argument(
+        "--final-prefix",
+        type=str,
+        default="dti_esmc_100k",
+        help="Prefix for final output filenames (default: dti_esmc_100k)",
+    )
+    parser.add_argument(
         "--target-size",
         type=int,
         default=100000,
@@ -293,11 +299,11 @@ def main():
     print(f"\nStep 5: Saving final files to {args.final_dir} ...")
 
     # CSV with SMILES_nometa column (matches ESM-2 format for Hydra config compatibility)
-    final_csv = os.path.join(args.final_dir, "dti_esmc_100k.csv")
+    final_csv = os.path.join(args.final_dir, f"{args.final_prefix}.csv")
     save_final_csv(filtered, raw_embeddings, final_csv)
 
     # Parquet version
-    final_parquet = os.path.join(args.final_dir, "dti_esmc_100k.parquet")
+    final_parquet = os.path.join(args.final_dir, f"{args.final_prefix}.parquet")
     out_df = pd.DataFrame(raw_embeddings, columns=FEATURE_COLS)
     out_df.insert(0, "SMILES_nometa", filtered["SMILES"].values)
     out_df.to_parquet(final_parquet, index=False)
@@ -305,7 +311,7 @@ def main():
     print(f"  Saved parquet: {final_parquet}  ({len(out_df):,} rows, {size_mb:.1f} MB)")
 
     # Norm stats
-    final_stats = os.path.join(args.final_dir, "dti_esmc_100k_norm_stats.pt")
+    final_stats = os.path.join(args.final_dir, f"{args.final_prefix}_norm_stats.pt")
     torch.save(
         {
             "mean": torch.FloatTensor(mean_vec),

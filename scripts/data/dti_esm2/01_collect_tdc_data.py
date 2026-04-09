@@ -38,23 +38,38 @@ TDC_DTI_DATASETS = [
 ]
 
 
-def download_tdc_datasets(cache_dir: str) -> list[pd.DataFrame]:
+def download_tdc_datasets(
+    cache_dir: str, train_only: bool = False
+) -> list[pd.DataFrame]:
     """Download all DTI datasets from TDC and return as list of DataFrames.
 
     Each DataFrame gets an additional 'dti_dataset' column recording which
     TDC dataset it came from.
+
+    Args:
+        cache_dir: Directory for TDC download cache.
+        train_only: If True, use only the train split from each dataset
+                    (via get_split()['train']) instead of the full dataset.
     """
     try:
+        # gget uses Python 3.10+ syntax (str | None) which breaks on 3.9.
+        # Stub it out before importing TDC to avoid the TypeError.
+        import types
+        sys.modules.setdefault("gget", types.ModuleType("gget"))
         from tdc.multi_pred import DTI
     except ImportError:
         print("ERROR: PyTDC is required.  Install with:  pip install PyTDC")
         sys.exit(1)
 
+    split_label = " (train split only)" if train_only else ""
     frames = []
     for name in TDC_DTI_DATASETS:
-        print(f"  Downloading TDC DTI dataset: {name} ...")
+        print(f"  Downloading TDC DTI dataset: {name}{split_label} ...")
         data = DTI(name=name, path=cache_dir)
-        df = data.get_data()
+        if train_only:
+            df = data.get_split(method="random", seed=42)["train"]
+        else:
+            df = data.get_data()
         df["dti_dataset"] = name.lower()
         frames.append(df)
         print(f"    -> {len(df):,} rows")
@@ -103,14 +118,20 @@ def main():
         default="data/tdc_cache",
         help="TDC download cache directory (default: data/tdc_cache)",
     )
+    parser.add_argument(
+        "--train-only",
+        action="store_true",
+        help="Use only the train split from each TDC dataset (default: use all data)",
+    )
     args = parser.parse_args()
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
 
-    print("Stage 1: Collecting DTI data from TDC")
+    split_msg = " (TRAIN SPLIT ONLY)" if args.train_only else ""
+    print(f"Stage 1: Collecting DTI data from TDC{split_msg}")
     print("=" * 60)
 
-    frames = download_tdc_datasets(args.cache_dir)
+    frames = download_tdc_datasets(args.cache_dir, train_only=args.train_only)
     df = collect_and_merge(frames)
 
     df.to_csv(args.output, index=False)

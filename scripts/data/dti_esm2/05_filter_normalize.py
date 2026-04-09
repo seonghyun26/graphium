@@ -184,6 +184,15 @@ def save_pt(
     )
 
 
+def save_final_csv(df: pd.DataFrame, embeddings: np.ndarray, path: str):
+    """Save final CSV with SMILES_nometa + feature columns (Hydra-compatible)."""
+    out_df = pd.DataFrame(embeddings, columns=FEATURE_COLS)
+    out_df.insert(0, "SMILES_nometa", df["SMILES"].values)
+    out_df.to_csv(path, index=False)
+    size_mb = os.path.getsize(path) / (1024 * 1024)
+    print(f"  Saved CSV:     {path}  ({len(out_df):,} rows, {size_mb:.1f} MB)")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -202,7 +211,19 @@ def main():
         "--output-dir",
         type=str,
         default="graphium/data/dti",
-        help="Output directory (default: graphium/data/dti)",
+        help="Intermediate output directory (default: graphium/data/dti)",
+    )
+    parser.add_argument(
+        "--final-dir",
+        type=str,
+        default="graphium/data/dti-processed",
+        help="Final output directory for training-ready files (default: graphium/data/dti-processed)",
+    )
+    parser.add_argument(
+        "--final-prefix",
+        type=str,
+        default="dti_esm2_100k",
+        help="Prefix for final output filenames (default: dti_esm2_100k)",
     )
     parser.add_argument(
         "--seed",
@@ -213,12 +234,13 @@ def main():
     parser.add_argument(
         "--target-size",
         type=int,
-        default=63405,
-        help="Target number of rows in filtered dataset (default: 63405)",
+        default=100000,
+        help="Target number of rows in filtered dataset (default: 100000)",
     )
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(args.final_dir, exist_ok=True)
 
     print("Stage 5: Filter + Normalize DTI-ESM2 dataset")
     print("=" * 60)
@@ -291,13 +313,33 @@ def main():
     size_kb = os.path.getsize(stats_pt) / 1024
     print(f"  Saved zscore stats: {stats_pt}  ({size_kb:.1f} KB)")
 
-    # ---- Step 5: Verify ----
-    print(f"\nStep 5: Verification ...")
-    df_l2 = pd.read_parquet(l2_parquet)
-    df_zs = pd.read_parquet(zscore_parquet)
-    pt_l2 = torch.load(l2_pt, map_location="cpu", weights_only=False)
-    pt_zs = torch.load(zscore_pt, map_location="cpu", weights_only=False)
-    stats = torch.load(stats_pt, map_location="cpu", weights_only=False)
+    # ---- Step 5: Save final training-ready files ----
+    print(f"\nStep 5: Saving final files to {args.final_dir} ...")
+
+    final_csv = os.path.join(args.final_dir, f"{args.final_prefix}.csv")
+    save_final_csv(filtered, embeddings_zscore, final_csv)
+
+    final_parquet = os.path.join(args.final_dir, f"{args.final_prefix}.parquet")
+    out_df = pd.DataFrame(embeddings_zscore, columns=FEATURE_COLS)
+    out_df.insert(0, "SMILES_nometa", filtered["SMILES"].values)
+    out_df.to_parquet(final_parquet, index=False)
+    size_mb = os.path.getsize(final_parquet) / (1024 * 1024)
+    print(f"  Saved parquet: {final_parquet}  ({len(out_df):,} rows, {size_mb:.1f} MB)")
+
+    final_stats = os.path.join(args.final_dir, f"{args.final_prefix}_norm_stats.pt")
+    torch.save(
+        {
+            "mean": torch.FloatTensor(mean_vec),
+            "std": torch.FloatTensor(std_vec),
+        },
+        final_stats,
+    )
+    print(f"  Saved norm stats: {final_stats}")
+
+    # ---- Step 6: Verify ----
+    print(f"\nStep 6: Verification ...")
+    df_final = pd.read_csv(final_csv)
+    pt_stats = torch.load(final_stats, map_location="cpu", weights_only=False)
 
     checks_passed = 0
     total_checks = 0
@@ -310,44 +352,30 @@ def main():
         else:
             print(f"  FAIL: {msg}")
 
+    actual_size = len(filtered)
     check(
-        len(df_l2) == args.target_size,
-        f"L2 parquet rows: {len(df_l2)} != {args.target_size}",
+        len(df_final) == actual_size,
+        f"Final CSV rows: {len(df_final)} != {actual_size}",
     )
     check(
-        len(df_zs) == args.target_size,
-        f"Zscore parquet rows: {len(df_zs)} != {args.target_size}",
+        len(df_final.columns) == EMBEDDING_DIM + 1,
+        f"Final CSV cols: {len(df_final.columns)} != {EMBEDDING_DIM + 1}",
     )
     check(
-        pt_l2["embeddings"].shape == (args.target_size, EMBEDDING_DIM),
-        f"L2 pt shape: {pt_l2['embeddings'].shape}",
+        "SMILES_nometa" in df_final.columns,
+        "Missing SMILES_nometa column in final CSV",
     )
     check(
-        pt_zs["embeddings"].shape == (args.target_size, EMBEDDING_DIM),
-        f"Zscore pt shape: {pt_zs['embeddings'].shape}",
+        pt_stats["mean"].shape == (EMBEDDING_DIM,),
+        f"Stats mean shape: {pt_stats['mean'].shape}",
     )
     check(
-        len(pt_l2["smiles"]) == args.target_size,
-        f"L2 pt smiles count: {len(pt_l2['smiles'])}",
-    )
-    check(
-        len(pt_zs["smiles"]) == args.target_size,
-        f"Zscore pt smiles count: {len(pt_zs['smiles'])}",
-    )
-    check(
-        len(pt_l2["protein_id"]) == args.target_size,
-        f"L2 pt protein_id count: {len(pt_l2['protein_id'])}",
-    )
-    check(
-        stats["mean"].shape == (EMBEDDING_DIM,),
-        f"Stats mean shape: {stats['mean'].shape}",
-    )
-    check(
-        stats["std"].shape == (EMBEDDING_DIM,),
-        f"Stats std shape: {stats['std'].shape}",
+        pt_stats["std"].shape == (EMBEDDING_DIM,),
+        f"Stats std shape: {pt_stats['std'].shape}",
     )
 
-    # Verify L2 norms are all ~1.0
+    # Verify L2 norms from intermediate files
+    df_l2 = pd.read_parquet(l2_parquet)
     l2_norms = np.linalg.norm(df_l2[FEATURE_COLS].values, axis=1)
     check(
         np.allclose(l2_norms, 1.0, atol=1e-5),
@@ -363,6 +391,9 @@ def main():
     # ---- Summary ----
     print("\nDone. Output files:")
     all_outputs = [
+        final_csv,
+        final_parquet,
+        final_stats,
         filtered_path,
         l2_parquet,
         l2_pt,
