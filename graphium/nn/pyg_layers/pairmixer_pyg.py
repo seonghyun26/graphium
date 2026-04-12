@@ -35,13 +35,12 @@ from graphium.nn.base_layers import MoELayer
 from graphium.ipu.to_dense_batch import to_dense_batch, to_sparse_batch
 from graphium.utils.decorators import classproperty
 
+from .pair_init import PairFeatureInitializer
 from .pairformer_pyg import (
-    OuterProductMean,
     Transition,
     TriangleMultiplicationIncoming,
     TriangleMultiplicationOutgoing,
     _get_dropout_mask,
-    _lecun_normal_init,
 )
 
 
@@ -76,6 +75,19 @@ class PairMixerLayerPyg(BaseGraphModule):
         Factor to scale hidden dim in transition MLPs (default 4).
     opm_hidden : int
         Hidden dimension of the outer-product-mean layer.
+    pair_init : dict, optional
+        Pair initialization configuration passed through to
+        :class:`PairFeatureInitializer`.  ``None`` or an empty dict
+        reproduces the previous OPM-only behavior with LeCun init.
+        Enable graph-structural priors via, e.g.::
+
+            pair_init:
+              mode: additive
+              use_pair_positional: true
+              pair_positional:
+                sources: [graph_distance, edge_feat]
+                graph_distance: {max_dist: 8, embedding_dim: 32}
+                edge_feat:      {embedding_dim: 16}
     """
 
     def __init__(
@@ -92,6 +104,8 @@ class PairMixerLayerPyg(BaseGraphModule):
         hidden_dim_scaling: float = 4.0,
         opm_hidden: int = 32,
         use_checkpoint: bool = True,
+        # ---- Pair representation initialization ----
+        pair_init: Optional[dict] = None,
         # ---- Speed optimizations ----
         compile_mode: str = "none",
         tri_mul_mode: str = "einsum",
@@ -124,21 +138,28 @@ class PairMixerLayerPyg(BaseGraphModule):
         self.use_checkpoint = use_checkpoint
         self.parallel_pair_ops = parallel_pair_ops
 
-        # ---- Pair track: outer-product mean initialization ----
-        # Only the first layer needs OPM (subsequent layers reuse pair_feat).
-        # This saves ~25% of parameters that would otherwise be dead.
+        # ---- Pair track: initial pair representation ----
+        # Only the first layer builds ``z_0`` (subsequent layers reuse
+        # pair_feat from the batch). This saves ~25% of parameters that
+        # would otherwise be dead on layer ≥ 1.
+        #
+        # ``PairFeatureInitializer`` supersedes the raw OuterProductMean
+        # call: it optionally folds in graph-structural priors (hop
+        # distance, adjacency, edge features) alongside OPM so that
+        # ``z_0`` is guaranteed non-degenerate at initialization.
+        # Default kwargs (``pair_init=None``) reproduce the previous
+        # OPM-only behavior with LeCun init.
         if self.layer_idx is None or self.layer_idx == 0:
-            self.opm = OuterProductMean(
-                in_dim, opm_hidden, pair_dim,
+            self.pair_init = PairFeatureInitializer(
+                in_dim=in_dim,
+                pair_dim=pair_dim,
+                opm_hidden=opm_hidden,
                 force_float32=force_float32_einsums,
+                pair_init_kwargs=pair_init,
+                edge_feat_in_dim=in_dim_edges,
             )
-            # Override zero-init on proj_o: PairMixer has no single-track
-            # updates to bootstrap the pair representation, so OPM must
-            # produce non-zero initial features (unlike Pairformer where
-            # the attention track provides the initial learning signal).
-            _lecun_normal_init(self.opm.proj_o.weight)
         else:
-            self.opm = None
+            self.pair_init = None
 
         # ---- Pair track: triangle multiplication only (no attention) ----
         self.tri_mul_out = TriangleMultiplicationOutgoing(
@@ -248,13 +269,14 @@ class PairMixerLayerPyg(BaseGraphModule):
 
         if hasattr(batch, "pair_feat") and batch.pair_feat is not None:
             z = batch.pair_feat
-        elif self.opm is not None:
-            z = self.opm(s_dense, node_mask)
+        elif self.pair_init is not None:
+            z = self.pair_init(s_dense, node_mask, batch)
         else:
             raise RuntimeError(
                 f"PairMixerLayerPyg (layer_idx={self.layer_idx}): "
-                "pair_feat not found on batch and no OPM available. "
-                "Only layer 0 has OPM; pair_feat must be set by a preceding layer."
+                "pair_feat not found on batch and no pair_init available. "
+                "Only layer 0 has pair_init; pair_feat must be set by a "
+                "preceding layer."
             )
 
         # ---- Pair track updates (optionally checkpointed) ----

@@ -1,0 +1,35 @@
+# @package _global_
+# PairMixer large configuration (~40M parameters)
+#
+# D_s=256, D_z=256, depth=24 → ~40M params
+#   pair-track backbone: 24 layers * 24 * D_z^2 ≈ 37.7M
+#   extras (pre_nn, OPM, graph_output_nn, task heads) ≈ 2-3M
+# Reference: Ouyang-Zhang et al., arXiv:2510.18870
+# Code: https://github.com/genesistherapeutics/pairmixer
+
+architecture:
+  pre_nn:
+    out_dim: 256
+    hidden_dims: 256
+
+  gnn:
+    in_dim: 256
+    out_dim: 256
+    hidden_dims: 256
+    depth: 24
+    residual_type: none           # PairMixer doesn't update node features (s_backbone=s_init);
+                                  # simple residual would double them every layer → bf16 overflow.
+    layer_type: 'pyg:pairmixer'
+    layer_kwargs:
+      pair_dim: 256              # Doubled from pairmixer_10M (main capacity lever)
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      use_checkpoint: true
+
+  graph_output_nn:
+    graph:
+      pair_dim: 256              # Pool pair_feat directly
+      pair_pool: stats           # graph-aware stats pooling (level_in_dim = 6*pair_dim)
+      hidden_dims: 256
+      out_dim: 512

@@ -1,0 +1,42 @@
+# @package _global_
+#
+# Continual pre-training of GPS++ 800M on LPM-24 starting from a LargeMix
+# checkpoint. Mirrors training/model/largemix_gpspp_800M.yaml so every
+# backbone-shape parameter matches the source checkpoint, guaranteeing the
+# state-dict copy in load_pretrained_backbone() will populate all backbone
+# parameters.
+#
+# Launch:
+#   bash scripts/00_pretrain.sh gpspp_800M continual_lpm24 5
+#
+# Override the checkpoint path if you have a different LargeMix run:
+#   EXTRA_FLAGS="continual_pretraining.pretrained_checkpoint=/abs/path/last.ckpt" \
+#     bash scripts/00_pretrain.sh gpspp_800M continual_lpm24 5
+
+constants:
+  name: continual_gpspp_800M_lpm24
+  seed: 42
+  max_epochs: 50
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/continual-lpm24/
+
+datamodule:
+  args:
+    batch_size_training: 128
+    dataloading_from: disk
+    num_workers: 4
+    persistent_workers: true
+
+trainer:
+  trainer:
+    accumulate_grad_batches: 3  # effective batch = 128 * 3 = 384, matches the LargeMix run
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/continual-pretraining/lpm24/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/
+
+# -- Continual pre-training: load backbone weights from a LargeMix checkpoint.
+# The default points at the 2026-03-22 LargeMix gpspp_800M run. Override via
+# EXTRA_FLAGS if you need a different source.
+continual_pretraining:
+  pretrained_checkpoint: /home/shpark/prj-molrepr/graphium/models_checkpoints/large-dataset/gpspp_800M/2026-03-22_11-35-30_20260322_113530/last.ckpt
+  strict: false
+  # exclude_prefixes: []  # optional: e.g. ["model.task_heads.graph_output_nn."]

@@ -40,11 +40,13 @@ from graphium.hyper_param_search import (
     extract_main_metric_for_hparam_search,
 )
 from graphium.trainer.predictor import PredictorModule
+from graphium.utils.load_pretrained_backbone import load_pretrained_backbone
 from graphium.utils.safe_run import SafeRun
 
 import graphium.cli.finetune_utils
 
 TESTING_ONLY_CONFIG_KEY = "testing_only"
+CONTINUAL_PRETRAINING_CONFIG_KEY = "continual_pretraining"
 
 
 def _extract_pretrain_dataset(tags) -> str:
@@ -339,6 +341,25 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
             gradient_acc=gradient_acc,
             global_bs=global_bs,
         )
+
+        # Continual pre-training: load backbone weights from a previous checkpoint
+        # into the freshly instantiated multitask network. Task heads in the new
+        # config that don't exist in the checkpoint stay randomly initialized.
+        if CONTINUAL_PRETRAINING_CONFIG_KEY in cfg:
+            if FINETUNING_CONFIG_KEY in cfg:
+                raise ValueError(
+                    "Configs 'continual_pretraining' and 'finetuning' are mutually "
+                    "exclusive. Continual pre-training keeps the model as a plain "
+                    "FullGraphMultiTaskNetwork; finetuning wraps it in "
+                    "FullGraphFinetuningNetwork."
+                )
+            cpt_cfg = cfg[CONTINUAL_PRETRAINING_CONFIG_KEY]
+            load_pretrained_backbone(
+                predictor=predictor,
+                checkpoint_path=cpt_cfg["pretrained_checkpoint"],
+                strict=cpt_cfg.get("strict", False),
+                exclude_prefixes=set(cpt_cfg.get("exclude_prefixes", []) or []),
+            )
 
     logger.info(predictor.model)
     logger.info(ModelSummary(predictor, max_depth=4))

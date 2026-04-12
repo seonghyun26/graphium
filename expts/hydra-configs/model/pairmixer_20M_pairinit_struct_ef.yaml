@@ -1,0 +1,36 @@
+# @package _global_
+# PairMixer 20M + structural + 1-hop edge-feature projection (ablation arm).
+#
+# Adds to the ``structural`` arm a learned projection of ``batch.edge_feat``
+# scattered into directly bonded pair positions:
+#   z_0 = z_OPM + PE(graph_distance) + PE(adjacency) + PE(edge_feat_1hop)
+#
+# ``edge_feat`` only populates direct-bond (1-hop) pair positions; longer-
+# range bond chemistry is left to ``path_edge`` in a separate arm.
+#
+# Requires ``in_dim_edges`` because the encoder needs to know the edge
+# feature dimension to instantiate the projection.  ToyMix featurizer
+# emits 13-dim edge features (bond-type-onehot + stereo + in-ring), as
+# verified by probing the featurizer directly.
+
+defaults:
+  - pairmixer_20M
+
+architecture:
+  gnn:
+    layer_kwargs:
+      in_dim_edges: 13
+      pair_init:
+        mode: additive
+        use_opm: true
+        opm_init: lecun
+        use_pair_positional: true
+        pair_positional:
+          sources: [graph_distance, adjacency, edge_feat]
+          graph_distance:
+            max_dist: 8
+            embedding_dim: 32
+          adjacency:
+            embedding_dim: 8
+          edge_feat:
+            embedding_dim: 16

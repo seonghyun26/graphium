@@ -1,0 +1,40 @@
+# @package _global_
+# PairMixer medium-large configuration (~20M parameters)
+#
+# D_s=256, D_z=192, depth=20 → ~20M params
+#   pair-track backbone: 20 layers * 24 * D_z^2 ≈ 17.7M
+#   extras (pre_nn, OPM, graph_output_nn, task heads) ≈ 2-3M
+#
+# Interpolates between pairmixer_10M (D_z=128, depth=18) and
+# pairmixer_40M (D_z=256, depth=24). Per-sample triangle cost is
+# roughly 47% of 40M (20*192² vs 24*256²) → ~2x wall-clock speedup.
+#
+# Reference: Ouyang-Zhang et al., arXiv:2510.18870
+# Code: https://github.com/genesistherapeutics/pairmixer
+
+architecture:
+  pre_nn:
+    out_dim: 256
+    hidden_dims: 256
+
+  gnn:
+    in_dim: 256
+    out_dim: 256
+    hidden_dims: 256
+    depth: 20
+    residual_type: none           # PairMixer doesn't update node features (s_backbone=s_init);
+                                  # simple residual would double them every layer → bf16 overflow.
+    layer_type: 'pyg:pairmixer'
+    layer_kwargs:
+      pair_dim: 192              # Interpolates 128 (10M) → 256 (40M)
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      use_checkpoint: true
+
+  graph_output_nn:
+    graph:
+      pair_dim: 192              # Pool pair_feat directly
+      pair_pool: stats           # graph-aware stats pooling (level_in_dim = 6*pair_dim)
+      hidden_dims: 256
+      out_dim: 512

@@ -24,6 +24,20 @@ architecture:
       hidden_dim_scaling: 4.0
       opm_hidden: 32
       use_checkpoint: true
+      # ---- Pair representation initialization ----
+      # z_0 = z_OPM + z_pair_prior (additive).  See PairFeatureInitializer.
+      pair_init:
+        mode: additive
+        use_opm: true
+        opm_init: lecun
+        use_pair_positional: true
+        pair_positional:
+          sources: [graph_distance, adjacency]
+          graph_distance:
+            max_dist: 8
+            embedding_dim: 32
+          adjacency:
+            embedding_dim: 8
 
   graph_output_nn:
     graph:

@@ -2503,6 +2503,9 @@ class TaskHeads(nn.Module, MupMixin):
                 divide_factor=divide_factor, factor_in_dim=factor_in_dim
             )
             task_heads_kwargs[task_name]["task_level"] = self.task_heads_kwargs[task_name]["task_level"]
+            for aux_key in ("aux_in_dim", "aux_label_split"):
+                if aux_key in self.task_heads_kwargs[task_name]:
+                    task_heads_kwargs[task_name][aux_key] = self.task_heads_kwargs[task_name][aux_key]
         kwargs = dict(
             in_dim=self.in_dim,
             last_layer_is_readout=self.last_layer_is_readout,

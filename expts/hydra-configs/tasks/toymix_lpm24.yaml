@@ -4,7 +4,9 @@ datamodule:
   args:
     task_specific_args:
       lpm24:
-        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/lpm24_pubmedbert.csv
+        # Size-filtered to ≤100 heavy atoms: caps max_node_per_batch → bounds pair-tensor O(N²);
+        # loses 19% of rows (160k → 130k), kept set still has mean=58 > ADMET p99=52.
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/lpm24_pubmedbert_max100.csv
         smiles_col: "SMILES_nometa"
         label_cols: feature_*
         split_val: 0.1

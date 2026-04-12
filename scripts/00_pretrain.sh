@@ -6,7 +6,7 @@
 #
 # Arguments:
 #   model    : gcn | mpnn | gpspp | gpspp_800M | gpspp_800M_moe | pairformer
-#   dataset  : toymix | largemix | rxrx3 | dti | largemix_rxrx3 | toymix_rxrx3
+#   dataset  : toymix | largemix | rxrx3 | dti | dti_pactivity | largemix_rxrx3 | toymix_rxrx3
 #              | largemix_dti | toymix_dti | toymix_rxrx3_dti | largemix_rxrx3_dti
 #              | rxrx3_dti
 #   gpu_id   : CUDA device index (default: 0)
@@ -81,7 +81,7 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-48}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
-    pairmixer_10M|pairmixer_10M_vn|pairmixer_boltz|pairmixer_boltz_moe)
+    pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)
         ;;  # dims, depth, batch size all in YAML configs
     *)
         echo "Error: unknown model '${MODEL}'."
@@ -132,6 +132,16 @@ case "${DATASET}" in
         TASKS=dti_esmc_v2
         TRAINING=dti_esmc_v2
         ARCHITECTURE=largemix
+        ;;
+    dti_pactivity)
+        TASKS=dti_pactivity
+        TRAINING=dti_pactivity
+        ARCHITECTURE=largemix
+        ;;
+    toymix_dti_pactivity)
+        TASKS=toymix_dti_pactivity
+        TRAINING=toymix_dti_pactivity
+        ARCHITECTURE=toymix
         ;;
     toymix_dti_v2)
         TASKS=toymix_dti_v2
@@ -193,6 +203,26 @@ case "${DATASET}" in
         TRAINING=bbbc047
         ARCHITECTURE=largemix
         ;;
+    bbbc047_dti_pactivity)
+        # Continual pre-training: load a LargeMix backbone, fit new task heads
+        # for BBBC047 + DTI pActivity. Pass the source checkpoint via EXTRA_FLAGS:
+        #   EXTRA_FLAGS="continual_pretraining.pretrained_checkpoint=/abs/path/last.ckpt" \
+        #     bash scripts/00_pretrain.sh gpspp_800M bbbc047_dti_pactivity 0
+        TASKS=bbbc047_dti_pactivity
+        TRAINING=continual_bbbc047_dti_pactivity
+        ARCHITECTURE=largemix
+        ;;
+    continual_lpm24)
+        # Continual pre-training: load a LargeMix backbone, fit a new lpm24
+        # task head (768-dim PubMedBERT embedding regression). The default
+        # checkpoint is baked into training/model/continual_lpm24_gpspp_800M.yaml;
+        # override with EXTRA_FLAGS if you want a different source:
+        #   EXTRA_FLAGS="continual_pretraining.pretrained_checkpoint=/abs/path/last.ckpt" \
+        #     bash scripts/00_pretrain.sh gpspp_800M continual_lpm24 5
+        TASKS=lpm24
+        TRAINING=continual_lpm24
+        ARCHITECTURE=largemix
+        ;;
     toymix_bbbc047)
         TASKS=toymix_bbbc047
         TRAINING=toymix_bbbc047
@@ -246,7 +276,7 @@ fi
 # Cap batch size for DTI datasets (2560-dim output head needs more memory)
 # Only applies when BATCH_SIZE was explicitly set; otherwise config handles it.
 if [[ -n "${_USER_BATCH_SIZE}" ]]; then
-    if [[ "${DATASET}" == "dti" || "${DATASET}" == "dti_filtered" || "${DATASET}" == "dti_10k_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" || "${DATASET}" == "dti_v2" || "${DATASET}" == "dti_esmc_v2" || "${DATASET}" == "toymix_dti_v2" || "${DATASET}" == "toymix_dti_esmc_v2" ]]; then
+    if [[ "${DATASET}" == "dti" || "${DATASET}" == "dti_filtered" || "${DATASET}" == "dti_10k_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" || "${DATASET}" == "dti_v2" || "${DATASET}" == "dti_esmc_v2" || "${DATASET}" == "toymix_dti_v2" || "${DATASET}" == "toymix_dti_esmc_v2" || "${DATASET}" == "dti_pactivity" ]]; then
         (( BATCH_SIZE > 128 )) && BATCH_SIZE=128
     fi
 fi
@@ -265,7 +295,7 @@ case "${MODEL}" in
     pairformer_17M)  DIM_FLAGS="" ;;  # dims set in model config
     pairformer_52M)  DIM_FLAGS="" ;;  # dims set in model config
     pairformer_boltz)  DIM_FLAGS="" ;;  # dims set in model config
-    pairmixer_10M|pairmixer_10M_vn|pairmixer_boltz|pairmixer_boltz_moe)  DIM_FLAGS="" ;;
+    pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)  DIM_FLAGS="" ;;
 esac
 
 # ── Optional: sample_size for dataset size ablation ──────────────────────────
@@ -286,6 +316,9 @@ if [[ -n "${SAMPLE_SIZE:-}" ]]; then
     if [[ "${DATASET}" == "dti" || "${DATASET}" == "dti_filtered" || "${DATASET}" == "dti_10k_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" || "${DATASET}" == "dti_v2" || "${DATASET}" == "dti_esmc_v2" || "${DATASET}" == "toymix_dti_v2" || "${DATASET}" == "toymix_dti_esmc_v2" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.dti.sample_size=${SAMPLE_SIZE}"
     fi
+    if [[ "${DATASET}" == "dti_pactivity" ]]; then
+        SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.dti_pactivity.sample_size=${SAMPLE_SIZE}"
+    fi
     if [[ "${DATASET}" == "lpm24" || "${DATASET}" == "toymix_lpm24" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.lpm24.sample_size=${SAMPLE_SIZE}"
     fi
@@ -301,7 +334,7 @@ fi
 # Models with dedicated configs set depth internally; don't override via CLI.
 DEPTH_FLAGS=""
 case "${MODEL}" in
-    gpspp_800M|gpspp_800M_moe|gpspp_768|pairformer|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_10M|pairmixer_10M_vn|pairmixer_boltz|pairmixer_boltz_moe)
+    gpspp_800M|gpspp_800M_moe|gpspp_768|pairformer|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)
         ;;  # depth comes from model config
     *)
         DEPTH_FLAGS="++architecture.gnn.depth=${GNN_DEPTH}"

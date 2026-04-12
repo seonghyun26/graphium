@@ -1,0 +1,26 @@
+# @package _global_
+
+# PairMixer medium-large (~20M params) with the ToyMix + LPM-24 dataset.
+constants:
+  name: toymix_lpm24_pairmixer_20M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: ../datacache/toymix-lpm24/
+
+datamodule:
+  args:
+    batch_size_training: 24      # 2x 40M (bs=12) — post-filter (≤100 atoms) allows higher per-step bs
+    batch_size_inference: 24
+    dataloading_from: ram
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/toymix-lpm24/pairmixer_20M/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed        # PairMixer triangle ops overflow fp16; bf16 has float32-range exponents
+    accumulate_grad_batches: 1   # effective batch = 24 (no accumulation; fastest epoch wall-clock)

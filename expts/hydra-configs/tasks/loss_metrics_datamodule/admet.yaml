@@ -55,7 +55,7 @@ predictor:
     lr: 4.e-5 # warmup can be scheduled using torch_scheduler_kwargs
   torch_scheduler_kwargs:
     module_type: WarmUpLinearLR
-    max_num_epochs: &max_epochs 10
+    max_num_epochs: &max_epochs 100
     warmup_epochs: 10
     verbose: False
   target_nan_mask: null # null: no mask, 0: 0 mask, ignore-flatten, ignore-mean-per-label

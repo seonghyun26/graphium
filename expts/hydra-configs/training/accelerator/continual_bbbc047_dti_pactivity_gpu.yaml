@@ -1,0 +1,27 @@
+# @package _global_
+# GPU accelerator companion for the continual_bbbc047_dti_pactivity training
+# config. Mirrors largemix_gpu.yaml in spirit (16-mixed precision, ties epochs
+# to constants.max_epochs) but uses smaller default batch sizes since DTI
+# pActivity carries a 1152-dim auxiliary protein-embedding input.
+# These can still be overridden in training/model/*.yaml.
+
+accelerator:
+  float32_matmul_precision: medium
+
+datamodule:
+  args:
+    batch_size_training: 128
+    batch_size_inference: 128
+    featurization_n_jobs: 6
+    num_workers: 4
+    persistent_workers: true
+
+predictor:
+  metrics_every_n_train_steps: 500
+  torch_scheduler_kwargs:
+    max_num_epochs: ${constants.max_epochs}
+
+trainer:
+  trainer:
+    precision: 16-mixed
+    max_epochs: ${constants.max_epochs}

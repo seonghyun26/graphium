@@ -110,7 +110,7 @@ def normalize_and_save(
 
     # --- Normalize pY ---
     pY = df["pY"].values.astype(np.float32)
-    pY_mean, pY_std = pY.mean(), pY.std()
+    pY_mean, pY_std = pY.mean(), max(pY.std(), 1e-8)
     pY_norm = (pY - pY_mean) / pY_std
     print(f"  pY normalization: mean={pY_mean:.4f}, std={pY_std:.4f}")
 
@@ -119,6 +119,7 @@ def normalize_and_save(
     prot_emb = df[feature_cols].values.astype(np.float32)
     prot_mean = prot_emb.mean(axis=0)
     prot_std = prot_emb.std(axis=0)
+    prot_std = np.where(prot_std < 1e-8, 1.0, prot_std)  # avoid div-by-zero
     prot_emb_norm = (prot_emb - prot_mean) / prot_std
     print(f"  prot_emb normalization: per-feature mean of normalized={prot_emb_norm.mean(axis=0).mean():.6e}")
 

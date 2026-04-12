@@ -24,6 +24,23 @@ architecture:
       hidden_dim_scaling: 4.0
       opm_hidden: 32
       use_checkpoint: true
+      # ---- Pair representation initialization ----
+      # z_0 = z_OPM + z_pair_prior (additive).  Guarantees a non-zero,
+      # graph-aware pair representation at layer 0 so the triangle
+      # multiplication backbone has a meaningful signal to refine.
+      # See PairFeatureInitializer for details.
+      pair_init:
+        mode: additive
+        use_opm: true
+        opm_init: lecun
+        use_pair_positional: true
+        pair_positional:
+          sources: [graph_distance, adjacency]
+          graph_distance:
+            max_dist: 8
+            embedding_dim: 32
+          adjacency:
+            embedding_dim: 8
 
   graph_output_nn:
     graph:

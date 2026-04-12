@@ -1,0 +1,61 @@
+# @package _global_
+#
+# ADMET fine-tuning with CosineAnnealingLR over 200 epochs,
+# from a ToyMix+BBBC047-pretrained model (sub_module=bbbc047).
+# See admet_cosine.yaml for a note on kwarg filtering.
+
+defaults:
+  - override /tasks/loss_metrics_datamodule: admet
+
+constants:
+  task: lipophilicity_astrazeneca
+  name: finetuning_${constants.task}_toymix_bbbc047_cosine
+  wandb:
+    name: ${constants.name}
+    project: ${constants.task}
+    entity: multitask-gnn
+  seed: 42
+  max_epochs: 200
+  data_dir: expts/data/admet/${constants.task}
+  raise_train_error: false
+  datacache_path: /home/shpark/prj-molrepr/datacache/admet/${constants.task}
+
+predictor:
+  optim_kwargs:
+    lr: 1.e-4
+  torch_scheduler_kwargs:
+    module_type: CosineAnnealingLR
+    T_max: 200
+    eta_min: 1.0e-6
+
+datamodule:
+  args:
+    num_workers: 0
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    save_last: false
+
+finetuning:
+  task: ${constants.task}
+  level: graph
+  pretrained_model: dummy-pretrained-model
+  finetuning_module: task_heads
+  sub_module_from_pretrained: bbbc047
+  new_sub_module: ${constants.task}
+  drop_depth: 1
+  new_out_dim: 8
+  added_depth: 2
+  unfreeze_pretrained_depth: 0
+  epoch_unfreeze_all: 50
+  finetuning_head:
+    task: ${constants.task}
+    previous_module: task_heads
+    incoming_level: graph
+    model_type: mlp
+    in_dim: 8
+    out_dim: 1
+    hidden_dims: 8
+    depth: 2
+    last_layer_is_readout: true

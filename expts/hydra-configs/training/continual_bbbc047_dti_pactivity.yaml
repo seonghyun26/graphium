@@ -1,0 +1,43 @@
+# @package _global_
+# Training schedule for continual pre-training on BBBC047 + DTI pActivity.
+#
+# This config differs from training/largemix.yaml in three ways:
+#   - Lower peak LR (4e-5 vs 1e-4): the backbone arrives pre-trained, so we
+#     want gentler updates to avoid wrecking the LargeMix representation.
+#   - Shorter horizon (50 epochs vs 100): two new datasets are smaller than
+#     LargeMix and we just need to fit task heads + adapt the backbone.
+#   - Shorter warmup (3 epochs vs 5): same logic — we are not training from
+#     random init.
+#
+# The actual checkpoint to load is set in the training/model override file
+# under `continual_pretraining.pretrained_checkpoint`.
+
+predictor:
+  random_seed: ${constants.seed}
+  optim_kwargs:
+    lr: 4.e-5
+    # weight_decay: 1.e-7
+  torch_scheduler_kwargs:
+    module_type: WarmUpLinearLR
+    max_num_epochs: &max_epochs 50
+    warmup_epochs: 3
+    verbose: False
+  scheduler_kwargs:
+  target_nan_mask: null
+  multitask_handling: flatten
+
+trainer:
+  seed: ${constants.seed}
+  logger:
+    save_dir: logs/continual-pretraining/
+    name: ${constants.name}
+    project: ${constants.name}
+  model_checkpoint:
+    dirpath: model_checkpoints/continual-pretraining/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: ${constants.name}
+    save_last: True
+  trainer:
+    precision: 16-mixed
+    max_epochs: ${predictor.torch_scheduler_kwargs.max_num_epochs}
+    min_epochs: 1
+    check_val_every_n_epoch: 5

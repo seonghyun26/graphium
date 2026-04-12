@@ -16,6 +16,8 @@
 #   FINETUNING_CONFIG    : hydra finetuning config (default: admet)
 #   SUB_MODULE           : sub_module_from_pretrained (default: auto-detect)
 #   PRETRAIN_DATASET     : pretrain dataset name for W&B tags (default: auto-detect from ckpt path)
+#   USE_COSINE=1         : use the *_cosine variant (200 epochs + CosineAnnealingLR)
+#                          appends "_cosine" to the auto-selected FINETUNING_CONFIG
 #
 # Examples:
 #   bash scripts/00_finetune_admet.sh gpspp ./checkpoints/gpspp_largemix.ckpt 0
@@ -55,7 +57,7 @@ case "${MODEL}" in
     pairformer_17M|pairformer_52M)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
-    pairmixer_10M|pairmixer_boltz)
+    pairmixer_10M|pairmixer_20M|pairmixer_40M|pairmixer_boltz)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
     *)
@@ -139,7 +141,17 @@ if [[ -z "${FINETUNING_CONFIG:-}" ]]; then
     esac
 fi
 
-TAGS="['${MODEL}','finetune','admet','${PRETRAIN_DATASET}'${MODEL_TAG:+,'${MODEL_TAG}'}]"
+# ── Cosine / 200-epoch variant ───────────────────────────────────────────────
+# If USE_COSINE=1 is set, swap to the *_cosine YAML sibling of the selected
+# finetuning config. The _cosine files live next to the base ones in
+# expts/hydra-configs/finetuning/ and override only the scheduler + max_epochs.
+COSINE_TAG=""
+if [[ "${USE_COSINE:-0}" == "1" ]]; then
+    FINETUNING_CONFIG="${FINETUNING_CONFIG}_cosine"
+    COSINE_TAG=",'cosine_200ep'"
+fi
+
+TAGS="['${MODEL}','finetune','admet','${PRETRAIN_DATASET}'${MODEL_TAG:+,'${MODEL_TAG}'}${COSINE_TAG}]"
 
 echo "=== Fine-tuning ${MODEL} on ADMET (ckpt=${CKPT}, pretrain=${PRETRAIN_DATASET}, unfreeze=${UNFREEZE_DEPTH}) ==="
 

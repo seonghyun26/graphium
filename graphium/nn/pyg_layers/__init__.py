@@ -12,3 +12,8 @@ from .pooling_pyg import VirtualNodePyg
 from .dimenet_pyg import DimeNetPyg
 from .pairformer_pyg import PairformerLayerPyg
 from .pairmixer_pyg import PairMixerLayerPyg
+from .pair_init import (
+    PairFeatureInitializer,
+    PairPositionalEncoder,
+    PathEdgeEncoder,
+)

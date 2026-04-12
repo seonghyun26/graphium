@@ -59,6 +59,7 @@ class PredictorModule(lightning.LightningModule):
         flag_kwargs: Dict[str, Any] = None,
         task_norms: Optional[Dict[Callable, Any]] = None,
         metrics_every_n_train_steps: Optional[int] = None,
+        aux_label_splits: Optional[Dict[str, int]] = None,
         replicas: int = 1,
         gradient_acc: int = 1,
         global_bs: Optional[int] = 1,
@@ -95,6 +96,21 @@ class PredictorModule(lightning.LightningModule):
         self.task_levels = task_levels
         self.featurization = featurization
         self.task_norms = task_norms
+        self.aux_label_splits = aux_label_splits or {}
+
+        # Validate: tasks with aux_label_splits must not use label normalization,
+        # because the full label tensor (pY + prot_emb) would be normalized/denormalized
+        # as a unit, causing shape mismatches after the split.
+        if self.aux_label_splits and task_norms is not None:
+            for task_name in self.aux_label_splits:
+                prefixed = f"{task_levels[task_name]}_{task_name}" if not task_name.startswith(f"{task_levels[task_name]}_") else task_name
+                norm = task_norms.get(prefixed)
+                if norm is not None and getattr(norm, "method", None) is not None:
+                    raise ValueError(
+                        f"Task '{task_name}' uses aux_label_splits and must not have "
+                        f"label_normalization enabled (found method={norm.method!r}). "
+                        f"Pre-normalize the data offline instead."
+                    )
 
         super().__init__()
 
@@ -324,8 +340,33 @@ class PredictorModule(lightning.LightningModule):
         weighted_loss = total_loss / num_tasks
         return weighted_loss, all_task_losses
 
+    def _split_aux_from_labels(self, batch: Dict[str, Any]) -> None:
+        """For tasks with aux_label_splits, extract auxiliary features from labels and inject into graph.
+
+        This enables tasks like DTI pActivity where protein embeddings are stored
+        alongside the label (pY) in the label tensor. Before the forward pass:
+          - labels[:, :split_idx] stays as the real label
+          - labels[:, split_idx:] is moved to batch["features"].aux_<task> for the task head
+        """
+        if not self.aux_label_splits:
+            return
+        labels_batch = batch["labels"]
+        feats_batch = batch["features"]
+        for orig_task, split_idx in self.aux_label_splits.items():
+            prefixed = self._get_task_key(self.task_levels[orig_task], orig_task)
+            if hasattr(labels_batch, prefixed) and labels_batch[prefixed] is not None:
+                full = labels_batch[prefixed]
+                labels_batch[prefixed] = full[:, :split_idx]
+                aux = full[:, split_idx:]
+                # In multi-task batches, molecules without DTI labels have NaN-filled
+                # tensors. Replace NaN aux features with zeros to avoid polluting
+                # the GNN backbone gradients through NaN forward passes.
+                aux = torch.nan_to_num(aux, nan=0.0)
+                feats_batch[f"aux_{orig_task}"] = aux
+
     def _general_step(self, batch: Dict[str, Tensor], step_name: str, to_cpu: bool) -> Dict[str, Any]:
         r"""Common code for training_step, validation_step and testing_step"""
+        self._split_aux_from_labels(batch)
         preds = self.forward(batch)  # The dictionary of predictions
 
         # * check for nan in model output
@@ -410,6 +451,7 @@ class PredictorModule(lightning.LightningModule):
         Paper: https://arxiv.org/abs/2010.09891
         Github: https://github.com/devnkong/FLAG
         """
+        self._split_aux_from_labels(batch)
 
         alpha, n_steps = self.flag_kwargs["alpha"], self.flag_kwargs["n_steps"]
 

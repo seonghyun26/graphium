@@ -1,0 +1,39 @@
+# @package _global_
+# Training schedule for continual pre-training on LPM-24 from a LargeMix
+# pre-trained backbone. Same LR/warmup philosophy as other continual configs:
+#   - lr 4e-5 (an order of magnitude below the 1e-4 used for from-scratch
+#     LargeMix), so we gently update the backbone instead of resetting it.
+#   - Shorter horizon (50 epochs) because LPM-24 is a single task and the
+#     backbone already converged on LargeMix.
+#
+# The source checkpoint is set in training/model/continual_lpm24_*.yaml
+# under `continual_pretraining.pretrained_checkpoint`.
+
+predictor:
+  random_seed: ${constants.seed}
+  optim_kwargs:
+    lr: 4.e-5
+  torch_scheduler_kwargs:
+    module_type: WarmUpLinearLR
+    max_num_epochs: &max_epochs 50
+    warmup_epochs: 3
+    verbose: False
+  scheduler_kwargs:
+  target_nan_mask: null
+  multitask_handling: flatten
+
+trainer:
+  seed: ${constants.seed}
+  logger:
+    save_dir: logs/continual-pretraining/
+    name: ${constants.name}
+    project: ${constants.name}
+  model_checkpoint:
+    dirpath: model_checkpoints/continual-pretraining/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: ${constants.name}
+    save_last: True
+  trainer:
+    precision: 16-mixed
+    max_epochs: ${predictor.torch_scheduler_kwargs.max_num_epochs}
+    min_epochs: 1
+    check_val_every_n_epoch: 5

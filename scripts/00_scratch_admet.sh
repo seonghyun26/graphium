@@ -62,14 +62,14 @@ case "${MODEL}" in
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
     pairmixer_10M)
-        DIM=${DIM:-192}
-        GNN_DEPTH=${GNN_DEPTH:-8}
-        BATCH_SIZE=${BATCH_SIZE:-32}
-        ;;
-    pairmixer_10M)
         DIM=${DIM:-256}
         GNN_DEPTH=${GNN_DEPTH:-18}
         BATCH_SIZE=${BATCH_SIZE:-32}
+        ;;
+    pairmixer_40M)
+        DIM=${DIM:-256}
+        GNN_DEPTH=${GNN_DEPTH:-24}
+        BATCH_SIZE=${BATCH_SIZE:-16}
         ;;
     pairmixer_boltz)
         DIM=${DIM:-384}
@@ -77,7 +77,7 @@ case "${MODEL}" in
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
     *)
-        echo "Error: unknown model '${MODEL}'. Choose from: gcn, mpnn, gpspp, gpspp_800M, pairformer_17M, pairformer_52M, pairformer_boltz, pairmixer_10M, pairmixer_boltz"
+        echo "Error: unknown model '${MODEL}'. Choose from: gcn, mpnn, gpspp, gpspp_800M, pairformer_17M, pairformer_52M, pairformer_boltz, pairmixer_10M, pairmixer_40M, pairmixer_boltz"
         exit 1
         ;;
 esac
@@ -93,8 +93,8 @@ case "${MODEL}" in
     pairformer)       DIM_FLAGS="" ;;  # pairformer uses config defaults
     pairformer_boltz|pairformer_17M|pairformer_52M) DIM_FLAGS="" ;;
     pairmixer)        DIM_FLAGS="" ;;
-    pairmixer_10M)  DIM_FLAGS="" ;;
-    pairmixer_10M) DIM_FLAGS="" ;;
+    pairmixer_10M)    DIM_FLAGS="" ;;  # dims set in model config
+    pairmixer_40M)    DIM_FLAGS="" ;;  # dims set in model config
     pairmixer_boltz)  DIM_FLAGS="" ;;  # pairformer_boltz sets dims in model config
 esac
 
@@ -102,7 +102,7 @@ esac
 # Models with dedicated configs (gpspp_800M, pairformer_*, pairmixer_*) get
 # dims/depth from their YAML — don't override via CLI.
 case "${MODEL}" in
-    gpspp_800M|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_10M|pairmixer_boltz)
+    gpspp_800M|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_10M|pairmixer_40M|pairmixer_boltz)
         ARCH_FLAGS=""
         DATAMODULE_FLAGS="++datamodule.args.batch_size_training=${BATCH_SIZE}"
         echo "=== Training ${MODEL} from scratch on ADMET (config defaults) ==="

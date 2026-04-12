@@ -4,7 +4,8 @@ datamodule:
   args:
     task_specific_args:
       dti:
-        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/dti_esmc_100k_v2.csv
+        # Size-filtered to ≤100 heavy atoms (kills the 288-atom outlier tail; loses ~0.68% of rows)
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/dti_esmc_100k_v2_max100.csv
         smiles_col: "SMILES_nometa"
         label_cols: feature_*
         split_val: 0.1

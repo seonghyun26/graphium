@@ -575,6 +575,13 @@ def pearson_ipu(preds, target):
         preds: estimated scores
         target: ground truth scores
     """
+    # torchmetrics pearson_corrcoef has a bug with shape [N, 1]: it raises
+    # "Expected argument `num_outputs` to match the second dimension of input,
+    # but got 1 and 2". Squeeze trailing singleton dim before wrapping in NaNTensor
+    # (NaNTensor overrides __torch_function__ which breaks plain bool comparisons).
+    if preds.ndim == 2 and preds.shape[-1] == 1:
+        preds = preds.squeeze(-1)
+        target = target.squeeze(-1)
     preds = NaNTensor(preds)
     target = NaNTensor(target)
     preds[target.get_nans] = float("nan")

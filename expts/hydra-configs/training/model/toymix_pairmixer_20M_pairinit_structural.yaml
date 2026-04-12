@@ -1,0 +1,25 @@
+# @package _global_
+
+# PairMixer 20M + structural pair init on ToyMix.
+# Same training config as toymix_pairmixer_20M; only the model differs.
+constants:
+  name: toymix_pairmixer_20M_pairinit_structural
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: ../datacache/neurips2023-small/
+
+datamodule:
+  args:
+    batch_size_training: 32
+    batch_size_inference: 32
+    num_workers: 0
+    persistent_workers: false
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/small-dataset/pairmixer_20M_pairinit_structural/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed
