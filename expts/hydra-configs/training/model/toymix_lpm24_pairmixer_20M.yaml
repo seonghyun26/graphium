@@ -11,8 +11,8 @@ constants:
 
 datamodule:
   args:
-    batch_size_training: 24      # 2x 40M (bs=12) — post-filter (≤100 atoms) allows higher per-step bs
-    batch_size_inference: 24
+    batch_size_training: 48      # doubled from 24; testing larger bs for faster epochs
+    batch_size_inference: 48
     dataloading_from: ram
     num_workers: 4
     persistent_workers: true

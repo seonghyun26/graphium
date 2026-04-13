@@ -21,6 +21,10 @@ constants:
 predictor:
   optim_kwargs:
     lr: 1.e-4
+  torch_scheduler_kwargs:
+    module_type: CosineAnnealingLR
+    T_max: ${constants.max_epochs}
+    eta_min: 1.0e-6
 
 datamodule:
   args:
