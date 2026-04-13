@@ -99,6 +99,7 @@ SCHEDULER_DICT = {
     "StepLR": sc.StepLR,
     "ConstantLR": sc.ConstantLR,
     "WarmUpLinearLR": CustomLR.WarmUpLinearLR,
+    "WarmUpCosineAnnealingLR": CustomLR.WarmUpCosineAnnealingLR,
 }
 
 METRICS_CLASSIFICATION = {

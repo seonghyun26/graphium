@@ -1989,6 +1989,11 @@ class GraphOutputNN(nn.Module, MupMixin):
             )
         self._pair_pool_mult = 6 if self.pair_pool == "stats" else 1
 
+        # Optional node-level pooling alongside pair pooling (e.g. max-pool
+        # over node embeddings concatenated with pair-stats features).
+        self.node_pool_layer = None
+        self._node_pool_dim = 0
+
         if self.task_level == "nodepair":
             level_in_dim = 2 * self.in_dim
         elif self.task_level == "edge":
@@ -1996,6 +2001,13 @@ class GraphOutputNN(nn.Module, MupMixin):
         elif self.task_level == "graph":
             if self.pair_dim is not None:
                 level_in_dim = self.pair_dim * self._pair_pool_mult
+                # Optionally also pool node features alongside pair features
+                node_pooling = graph_output_nn_kwargs[self.task_level].get("node_pooling", None)
+                if node_pooling is not None:
+                    self.node_pool_layer, self._node_pool_dim = self._parse_pooling_layer(
+                        self.in_dim, node_pooling
+                    )
+                    level_in_dim += self._node_pool_dim
             else:
                 self.global_pool_layer, self.out_pool_dim = self._parse_pooling_layer(
                     self.in_dim, graph_output_nn_kwargs[self.task_level]["pooling"]
@@ -2013,7 +2025,7 @@ class GraphOutputNN(nn.Module, MupMixin):
         name = graph_output_nn_kwargs[self.task_level].pop("name", "post-NN")
         filtered_graph_output_nn_kwargs = {
             k: v for k, v in graph_output_nn_kwargs[self.task_level].items()
-            if k not in ["pooling", "in_dim", "pair_dim", "pair_pool"]
+            if k not in ["pooling", "in_dim", "pair_dim", "pair_pool", "node_pooling"]
         }
         self.graph_output_nn = FeedForwardNN(
             in_dim=level_in_dim, name=name, **filtered_graph_output_nn_kwargs
@@ -2038,9 +2050,14 @@ class GraphOutputNN(nn.Module, MupMixin):
         if self.task_level == "graph":
             if self.pair_dim is not None and hasattr(g, "pair_feat") and g.pair_feat is not None:
                 if self.pair_pool == "stats":
-                    g["graph_feat"] = self._pool_pair_stats(g)
+                    pair_out = self._pool_pair_stats(g)
                 else:
-                    g["graph_feat"] = self._pool_pair_feat(g)
+                    pair_out = self._pool_pair_feat(g)
+                if self.node_pool_layer is not None:
+                    node_out = self._pool_layer_forward(g, g["feat"])
+                    g["graph_feat"] = torch.cat([pair_out, node_out], dim=-1)
+                else:
+                    g["graph_feat"] = pair_out
             else:
                 g["graph_feat"] = self._pool_layer_forward(g, g["feat"])
 

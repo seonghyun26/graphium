@@ -12,13 +12,26 @@ architecture:
     out_dim: 256
     hidden_dims: 256
 
+  pre_nn_edges:
+    out_dim: 256                 # Match pair_dim so edge embeddings feed cleanly into pair init
+    hidden_dims: 128
+    depth: 2
+    activation: relu
+    last_activation: none
+    dropout: 0.02
+    normalization: layer_norm
+    last_normalization: layer_norm
+    residual_type: none
+
   gnn:
     in_dim: 256
     out_dim: 256
     hidden_dims: 256
+    in_dim_edges: 256            # Must match pre_nn_edges.out_dim
     depth: 24
     residual_type: none           # PairMixer doesn't update node features (s_backbone=s_init);
                                   # simple residual would double them every layer → bf16 overflow.
+    virtual_node: logsum          # Learnable global node (MiniMol-style); aids graph-level readout
     layer_type: 'pyg:pairmixer'
     layer_kwargs:
       pair_dim: 256              # Doubled from pairmixer_10M (main capacity lever)
@@ -31,5 +44,6 @@ architecture:
     graph:
       pair_dim: 256              # Pool pair_feat directly
       pair_pool: stats           # graph-aware stats pooling (level_in_dim = 6*pair_dim)
+      node_pooling: [max]        # Also max-pool node embeddings; concat with pair-stats
       hidden_dims: 256
       out_dim: 512

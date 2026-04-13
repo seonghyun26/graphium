@@ -689,6 +689,7 @@ class PredictorModule(lightning.LightningModule):
         concatenated_metrics_logs = self.task_epoch_summary.concatenate_metrics_logs(metrics_logs)
         concatenated_metrics_logs["val/mean_time"] = torch.tensor(self.mean_val_time_tracker.mean_value)
         concatenated_metrics_logs["val/mean_tput"] = self.mean_val_tput_tracker.mean_value
+        self._log_primary_score(concatenated_metrics_logs, "val")
         self.log_dict(concatenated_metrics_logs, sync_dist=True)
 
         # Save yaml file with the per-task metrics summaries
@@ -702,6 +703,7 @@ class PredictorModule(lightning.LightningModule):
         metrics_logs = self._general_epoch_end(outputs=self.test_step_outputs, step_name="test", device="cpu")
         self.test_step_outputs.clear()
         concatenated_metrics_logs = self.task_epoch_summary.concatenate_metrics_logs(metrics_logs)
+        self._log_primary_score(concatenated_metrics_logs, "test")
 
         self.log_dict(concatenated_metrics_logs, sync_dist=True)
 
@@ -714,6 +716,23 @@ class PredictorModule(lightning.LightningModule):
         hparams_log["n_params"] = self.n_params
         if self.logger is not None:
             self.logger.log_hyperparams(hparams_log)
+
+    def _log_primary_score(self, metrics_logs: Dict[str, Any], step_name: str) -> None:
+        """Log the primary metric for each task as ``score/{step_name}``.
+
+        Uses ``metrics_on_progress_bar`` to identify the primary metric per
+        task (first entry in the list).  For single-task ADMET finetuning this
+        produces one ``score/val`` and ``score/test`` value per run, making
+        cross-task comparison easy in W&B.
+        """
+        for task in self.tasks:
+            primary = self.metrics_on_progress_bar.get(task, [])
+            if not primary:
+                continue
+            key = self.task_epoch_summary.metric_log_name(task, primary[0], step_name)
+            if key in metrics_logs:
+                val = metrics_logs[key]
+                metrics_logs[f"score/{step_name}"] = val
 
     def get_progress_bar_dict(self) -> Dict[str, float]:
         prog_dict = {}

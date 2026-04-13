@@ -61,7 +61,7 @@ def _extract_pretrain_dataset(tags) -> str:
             "speed_benchmark", "scratch_benchmark"}
     # First tag is model name; skip it and known keywords
     candidates = [t for t in tags[1:] if t not in skip]
-    return candidates[-1] if candidates else None
+    return candidates[0] if candidates else None
 
 
 def _save_results_csv(results: dict, cfg: dict, output_dir: str) -> None:

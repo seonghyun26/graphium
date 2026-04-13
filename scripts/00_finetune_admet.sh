@@ -148,7 +148,7 @@ fi
 COSINE_TAG=""
 if [[ "${USE_COSINE:-0}" == "1" ]]; then
     FINETUNING_CONFIG="${FINETUNING_CONFIG}_cosine"
-    COSINE_TAG=",'cosine_200ep'"
+    COSINE_TAG=",'cosine_100ep'"
 fi
 
 TAGS="['${MODEL}','finetune','admet','${PRETRAIN_DATASET}'${MODEL_TAG:+,'${MODEL_TAG}'}${COSINE_TAG}]"
