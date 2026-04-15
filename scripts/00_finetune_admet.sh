@@ -77,6 +77,10 @@ if [[ -z "${PRETRAIN_DATASET:-}" ]]; then
         PRETRAIN_DATASET="toymix_dti_esmc_v2"
     elif [[ "${CKPT_LOWER}" == *"toymix_dti_esmc"* || "${CKPT_LOWER}" == *"toymix-dti-esmc"* ]]; then
         PRETRAIN_DATASET="toymix_dti_esmc"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti_pactivity"* || "${CKPT_LOWER}" == *"toymix-dti-pactivity"* ]]; then
+        PRETRAIN_DATASET="toymix_dti_pactivity"
+    elif [[ "${CKPT_LOWER}" == *"dti_pactivity"* || "${CKPT_LOWER}" == *"dti-pactivity"* ]]; then
+        PRETRAIN_DATASET="dti_pactivity"
     elif [[ "${CKPT_LOWER}" == *"toymix_dti_10k_filtered"* || "${CKPT_LOWER}" == *"toymix-dti-10k-filtered"* ]]; then
         PRETRAIN_DATASET="toymix_dti_10k_filtered"
     elif [[ "${CKPT_LOWER}" == *"toymix_dti_filtered"* || "${CKPT_LOWER}" == *"toymix-dti-filtered"* ]]; then
@@ -123,9 +127,11 @@ if [[ -z "${FINETUNING_CONFIG:-}" ]]; then
         largemix_rxrx3) FINETUNING_CONFIG="admet_largemix_rxrx3" ;;   # sub_module: rxrx3
         toymix_rxrx3)   FINETUNING_CONFIG="admet_toymix_rxrx3" ;;     # sub_module: rxrx3
         dti)            FINETUNING_CONFIG="admet_dti" ;;               # sub_module: dti
+        dti_pactivity)  FINETUNING_CONFIG="admet_dti_pactivity" ;;    # finetuning_module: graph_output_nn
         largemix_dti)   FINETUNING_CONFIG="admet_largemix_dti" ;;      # sub_module: dti
         largemix_dti_filtered) FINETUNING_CONFIG="admet_largemix_dti_filtered" ;; # sub_module: dti
         toymix_dti)     FINETUNING_CONFIG="admet_toymix_dti" ;;        # sub_module: dti
+        toymix_dti_pactivity) FINETUNING_CONFIG="admet_toymix_dti_pactivity" ;; # sub_module: dti_pactivity
         toymix_dti_v2)  FINETUNING_CONFIG="admet_toymix_dti" ;;       # sub_module: dti
         toymix_dti_esmc) FINETUNING_CONFIG="admet_toymix_dti" ;;      # sub_module: dti
         toymix_dti_esmc_v2) FINETUNING_CONFIG="admet_toymix_dti" ;;   # sub_module: dti
@@ -153,6 +159,18 @@ fi
 
 TAGS="['${MODEL}','finetune','admet','${PRETRAIN_DATASET}'${MODEL_TAG:+,'${MODEL_TAG}'}${COSINE_TAG}]"
 
+# Configs using keep_modules_after_finetuning_module don't attach a separate
+# finetuning_head (the kept task_heads entry IS the new head), so we must not
+# emit ++finetuning.finetuning_head.* overrides.
+case "${FINETUNING_CONFIG}" in
+    admet_dti_pactivity*)
+        FT_HEAD_FLAGS=""
+        ;;
+    *)
+        FT_HEAD_FLAGS="++finetuning.finetuning_head.in_dim=${FINETUNE_DIM} ++finetuning.finetuning_head.hidden_dims=${FINETUNE_DIM} ++finetuning.new_out_dim=${FINETUNE_DIM} ++finetuning.finetuning_head.depth=${ADDED_DEPTH}"
+        ;;
+esac
+
 echo "=== Fine-tuning ${MODEL} on ADMET (ckpt=${CKPT}, pretrain=${PRETRAIN_DATASET}, unfreeze=${UNFREEZE_DEPTH}) ==="
 
 for task in "${ADMET_TASKS[@]}"; do
@@ -170,10 +188,7 @@ for task in "${ADMET_TASKS[@]}"; do
         ++finetuning.pretrained_model=${CKPT} \
         ++finetuning.unfreeze_pretrained_depth=${UNFREEZE_DEPTH} \
         ++finetuning.epoch_unfreeze_all=${EPOCH_UNFREEZE_ALL} \
-        ++finetuning.finetuning_head.in_dim=${FINETUNE_DIM} \
-        ++finetuning.finetuning_head.hidden_dims=${FINETUNE_DIM} \
-        ++finetuning.new_out_dim=${FINETUNE_DIM} \
-        ++finetuning.finetuning_head.depth=${ADDED_DEPTH} \
+        ${FT_HEAD_FLAGS} \
         ++finetuning.added_depth=${ADDED_DEPTH} \
         ++architecture.task_heads.${task}.hidden_dims=${FINETUNE_DIM} \
         ++trainer.model_checkpoint.dirpath=models_checkpoints/admet/${PRETRAIN_DATASET}/${MODEL}/${task}/ \

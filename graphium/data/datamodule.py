@@ -2581,6 +2581,204 @@ class ADMETBenchmarkDataModule(MultitaskFromSmilesDataModule):
         )
 
 
+class PolarisADMETBenchmarkDataModule(MultitaskFromSmilesDataModule):
+    """
+    Wrapper to use the Polaris `biogen/adme-fang-v1` ADME benchmark suite.
+
+    The dataset (Fang et al. 2023, https://doi.org/10.1021/acs.jcim.3c00160) bundles six
+    in vitro ADME endpoints: human/rat liver microsomal intrinsic clearance, MDR1-MDCK
+    efflux ratio, human/rat plasma protein binding, and kinetic solubility. Polaris hosts
+    one official single-task benchmark per endpoint (`adme-fang-<slug>-reg-v1`); each
+    ships an official random train/test split we use as-is and carves a val split out
+    of train with `tdc_train_val_seed` (re-using the name for consistency with the TDC
+    pipeline). Data is fetched once from the public Polaris Hub API (no auth needed) and
+    cached under `polaris_cache_dir`.
+
+    Parameters:
+        polaris_benchmark_names: Subset of benchmark short names (e.g. ``"hclint"``). If
+            ``None``, all six endpoints are loaded. The short names map to the Polaris
+            benchmark slugs under the ``biogen`` owner.
+        tdc_train_val_seed: Seed for carving the train/val split out of Polaris's train set.
+        polaris_cache_dir: Directory for caching the raw parquet and per-task split CSVs.
+    """
+
+    # Task name -> (polaris benchmark slug under biogen, target column in parquet)
+    _POLARIS_BENCHMARKS = {
+        "adme_fang_hclint": ("adme-fang-hclint-reg-v1", "LOG_HLM_CLint"),
+        "adme_fang_rclint": ("adme-fang-rclint-reg-v1", "LOG_RLM_CLint"),
+        "adme_fang_perm": ("adme-fang-perm-reg-v1", "LOG_MDR1-MDCK_ER"),
+        "adme_fang_hppb": ("adme-fang-hppb-reg-v1", "LOG_HPPB"),
+        "adme_fang_rppb": ("adme-fang-rppb-reg-v1", "LOG_RPPB"),
+        "adme_fang_solu": ("adme-fang-solu-reg-v1", "LOG_SOLUBILITY"),
+    }
+    _DATASET_PARQUET_URL = (
+        "https://data.polarishub.io/dataset/biogen/adme-fang-v1/table.parquet"
+    )
+    _BENCHMARK_API_URL = "https://polarishub.io/api/v1/benchmark/biogen/{slug}"
+
+    def __init__(
+        self,
+        polaris_benchmark_names: Optional[Union[str, List[str]]] = None,
+        tdc_train_val_seed: int = 0,
+        polaris_cache_dir: Optional[Union[str, Path]] = None,
+        val_fraction: float = 0.1,
+        # Inherited arguments from superclass
+        processed_graph_data_path: Optional[Union[str, Path]] = None,
+        dataloading_from: str = "ram",
+        featurization: Optional[Union[Dict[str, Any], omegaconf.DictConfig]] = None,
+        batch_size_training: int = 16,
+        batch_size_inference: int = 16,
+        batch_size_per_pack: Optional[int] = None,
+        num_workers: int = 0,
+        pin_memory: bool = True,
+        persistent_workers: bool = False,
+        multiprocessing_context: Optional[str] = None,
+        featurization_n_jobs: int = -1,
+        featurization_progress: bool = False,
+        featurization_backend: str = "loky",
+        collate_fn: Optional[Callable] = None,
+        prepare_dict_or_graph: str = "pyg:graph",
+        **kwargs,
+    ):
+        if polaris_cache_dir is None:
+            polaris_cache_dir = "/home/shpark/prj-molrepr/datacache/polaris_adme_fang"
+        polaris_cache_dir = str(polaris_cache_dir)
+        fs.mkdir(polaris_cache_dir, exist_ok=True)
+
+        # Normalize task list
+        if polaris_benchmark_names is None:
+            polaris_benchmark_names = list(self._POLARIS_BENCHMARKS.keys())
+        if isinstance(polaris_benchmark_names, str):
+            polaris_benchmark_names = [polaris_benchmark_names]
+        unknown = [n for n in polaris_benchmark_names if n not in self._POLARIS_BENCHMARKS]
+        if unknown:
+            raise ValueError(
+                f"Unknown Polaris ADME benchmark(s): {unknown}. "
+                f"Valid options: {list(self._POLARIS_BENCHMARKS)}"
+            )
+
+        raw_df = self._load_raw_parquet(polaris_cache_dir)
+
+        logger.info(
+            f"Preparing the Polaris ADME-Fang benchmark splits for {len(polaris_benchmark_names)} endpoints."
+        )
+        task_specific_args = {
+            name: self._get_task_specific_arguments(
+                name, raw_df, polaris_cache_dir, tdc_train_val_seed, val_fraction
+            )
+            for name in polaris_benchmark_names
+        }
+
+        super().__init__(
+            task_specific_args=task_specific_args,
+            featurization=featurization,
+            processed_graph_data_path=processed_graph_data_path,
+            dataloading_from=dataloading_from,
+            batch_size_training=batch_size_training,
+            batch_size_inference=batch_size_inference,
+            batch_size_per_pack=batch_size_per_pack,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            persistent_workers=persistent_workers,
+            multiprocessing_context=multiprocessing_context,
+            featurization_n_jobs=featurization_n_jobs,
+            featurization_progress=featurization_progress,
+            featurization_backend=featurization_backend,
+            collate_fn=collate_fn,
+            prepare_dict_or_graph=prepare_dict_or_graph,
+            **kwargs,
+        )
+
+    @classmethod
+    def _load_raw_parquet(cls, cache_dir: str) -> pd.DataFrame:
+        import httpx
+
+        parquet_path = fs.join(cache_dir, "adme-fang-v1.parquet")
+        if not fs.exists(parquet_path):
+            logger.info(f"Downloading Polaris adme-fang-v1 parquet to {parquet_path}")
+            resp = httpx.get(cls._DATASET_PARQUET_URL, follow_redirects=True, timeout=60.0)
+            resp.raise_for_status()
+            with fsspec.open(parquet_path, "wb") as f:
+                f.write(resp.content)
+        return pd.read_parquet(parquet_path)
+
+    @classmethod
+    def _load_benchmark_metadata(cls, slug: str, cache_dir: str) -> Dict[str, Any]:
+        import httpx
+        import json
+
+        meta_path = fs.join(cache_dir, f"{slug}.json")
+        if fs.exists(meta_path):
+            with fsspec.open(meta_path, "r") as f:
+                return json.load(f)
+        resp = httpx.get(cls._BENCHMARK_API_URL.format(slug=slug), timeout=60.0)
+        resp.raise_for_status()
+        data = resp.json()
+        with fsspec.open(meta_path, "w") as f:
+            json.dump(data, f)
+        return data
+
+    def _get_task_specific_arguments(
+        self,
+        name: str,
+        raw_df: pd.DataFrame,
+        cache_dir: str,
+        seed: int,
+        val_fraction: float,
+    ) -> DatasetProcessingParams:
+        slug, target_col = self._POLARIS_BENCHMARKS[name]
+        meta = self._load_benchmark_metadata(slug, cache_dir)
+
+        train_idx, test_idx = meta["split"]  # [train_indices, test_indices]
+
+        # Drop rows where this endpoint is NaN, keeping the alignment with Polaris indices.
+        valid_mask = raw_df[target_col].notna()
+        train_idx = [i for i in train_idx if valid_mask.iloc[i]]
+        test_idx = [i for i in test_idx if valid_mask.iloc[i]]
+
+        # Carve val out of train (deterministic, seeded).
+        train_idx, val_idx = train_test_split(
+            train_idx, test_size=val_fraction, random_state=seed, shuffle=True
+        )
+
+        # Slice + reindex to match what graphium expects: positional splits over `data`.
+        ordered_idx = list(train_idx) + list(val_idx) + list(test_idx)
+        data = raw_df.iloc[ordered_idx][["MOL_smiles", target_col]].reset_index(drop=True)
+        data = data.rename(columns={target_col: "Y"})
+        data["Y"] = data["Y"].astype(float)
+
+        n_train, n_val, n_test = len(train_idx), len(val_idx), len(test_idx)
+        total_len = n_train + n_val + n_test
+        max_len = max(n_train, n_val, n_test)
+        split = pd.DataFrame(
+            {
+                "train": list(range(n_train)) + [float("nan")] * (max_len - n_train),
+                "val": list(range(n_train, n_train + n_val)) + [float("nan")] * (max_len - n_val),
+                "test": list(range(n_train + n_val, total_len)) + [float("nan")] * (max_len - n_test),
+            }
+        )
+        split_path = fs.join(cache_dir, f"{slug}_seed{seed}_split.csv")
+        split.to_csv(split_path, index=False)
+
+        # PPB endpoints have logit-transformed narrow distributions but we still normalize
+        # clearance/solubility where raw units span >3 decades. Keep scheme parity with TDC.
+        NEEDS_NORMALIZATION = {"adme_fang_hclint", "adme_fang_rclint", "adme_fang_solu"}
+        label_normalization = (
+            {"method": "normal", "normalize_val_test": True} if name in NEEDS_NORMALIZATION else None
+        )
+
+        return DatasetProcessingParams(
+            df=data,
+            idx_col=None,
+            smiles_col="MOL_smiles",
+            label_cols=["Y"],
+            splits_path=split_path,
+            split_names=["train", "val", "test"],
+            task_level="graph",
+            label_normalization=label_normalization,
+        )
+
+
 class FakeDataModule(MultitaskFromSmilesDataModule):
     """
     A fake datamodule that generates artificial data by mimicking the true data coming

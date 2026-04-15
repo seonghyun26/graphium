@@ -1,0 +1,3 @@
+defaults:
+  - task_heads: belka
+  - loss_metrics_datamodule: belka

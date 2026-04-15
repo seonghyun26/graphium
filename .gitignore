@@ -208,3 +208,4 @@ autoresearch/
 *.tab
 *.zip
 *.omc
+*scheduled_tasks.lock

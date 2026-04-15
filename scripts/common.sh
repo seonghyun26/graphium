@@ -35,6 +35,21 @@ else
     )
 fi
 
+# ── Polaris ADME-Fang task list (6 endpoints) ────────────────────────────────
+# Override by setting POLARIS_ADME_TASKS_OVERRIDE (space-separated) before sourcing.
+if [[ -n "${POLARIS_ADME_TASKS_OVERRIDE:-}" ]]; then
+    read -ra POLARIS_ADME_TASKS <<< "${POLARIS_ADME_TASKS_OVERRIDE}"
+else
+    POLARIS_ADME_TASKS=(
+        adme_fang_hclint    # LOG_HLM_CLint  (human liver microsomal clearance)
+        adme_fang_rclint    # LOG_RLM_CLint  (rat liver microsomal clearance)
+        adme_fang_perm      # LOG_MDR1-MDCK_ER (MDR1-MDCK efflux ratio)
+        adme_fang_hppb      # LOG_HPPB (human plasma protein binding)
+        adme_fang_rppb      # LOG_RPPB (rat plasma protein binding)
+        adme_fang_solu      # LOG_SOLUBILITY
+    )
+fi
+
 # ── Helper: common W&B flags ─────────────────────────────────────────────────
 wandb_flags() {
     local tags="$1"

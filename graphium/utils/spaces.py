@@ -21,6 +21,7 @@ import graphium.nn.ensemble_layers as EnsembleLayers
 import graphium.nn.architectures as Architectures
 import graphium.utils.custom_lr as CustomLR
 import graphium.data.datamodule as Datamodules
+import graphium.data.belka_datamodule as BelkaDatamodules
 import graphium.ipu.ipu_losses as IPULosses
 import graphium.ipu.ipu_metrics as Metrics
 import graphium.nn.pyg_layers as PygLayers
@@ -146,6 +147,8 @@ DATAMODULE_DICT = {
     "GraphOGBDataModule": Datamodules.GraphOGBDataModule,
     "MultitaskFromSmilesDataModule": Datamodules.MultitaskFromSmilesDataModule,
     "ADMETBenchmarkDataModule": Datamodules.ADMETBenchmarkDataModule,
+    "PolarisADMETBenchmarkDataModule": Datamodules.PolarisADMETBenchmarkDataModule,
+    "BelkaBenchmarkDataModule": BelkaDatamodules.BelkaBenchmarkDataModule,
     "FakeDataModule": Datamodules.FakeDataModule,
 }
 

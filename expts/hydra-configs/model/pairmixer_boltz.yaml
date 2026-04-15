@@ -23,7 +23,11 @@ architecture:
       pair_dropout: 0.25
       hidden_dim_scaling: 4.0
       opm_hidden: 32
+      # ---- Speed ----
+      # compile=pair_track alone → ~1.97x fwd+bwd; also reduces peak memory.
+      # Depth=48 is large so keep checkpointing on unless OOM-free.
       use_checkpoint: true
+      compile_mode: pair_track
       # ---- Pair representation initialization ----
       # z_0 = z_OPM + z_pair_prior (additive).  See PairFeatureInitializer.
       pair_init:

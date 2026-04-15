@@ -1,0 +1,65 @@
+# @package _global_
+# PairMixer search anchor (~12M params target).
+#
+# Starting point for architecture search around the 12M param budget.
+# Override any of these via Hydra CLI, e.g.:
+#   graphium-train model=pairmixer_auto \
+#     ++architecture.gnn.depth=12 \
+#     ++architecture.gnn.layer_kwargs.pair_dim=160 \
+#     ++architecture.pre_nn.out_dim=96 \
+#     ++architecture.pre_nn_edges.out_dim=32
+#
+# Levers (and rough sensitivity):
+#   gnn.depth                              — linear in param count
+#   gnn.layer_kwargs.pair_dim (D_z)        — quadratic in param count (main lever)
+#   gnn.hidden_dims / pre_nn.out_dim (D_s) — affects OPM + node track
+#   pre_nn_edges.out_dim                   — small, feeds pair init
+#   gnn.virtual_node (logsum | none)       — +1 global node
+#   graph_output_nn.graph.node_pooling     — concat node stats onto head input
+#
+# Anchor: D_s=128, D_z=192, depth=10 → ~12M (pair-track 10 * 24 * 192^2 ≈ 8.8M).
+
+architecture:
+  pre_nn:
+    out_dim: 128
+    hidden_dims: 128
+
+  pre_nn_edges:
+    out_dim: 64                  # feeds pair init; small by default, overridable
+    hidden_dims: 64
+    depth: 2
+    activation: relu
+    last_activation: none
+    dropout: 0.02
+    normalization: layer_norm
+    last_normalization: layer_norm
+    residual_type: none
+
+  gnn:
+    in_dim: 128
+    out_dim: 128
+    hidden_dims: 128
+    in_dim_edges: 64             # Must match pre_nn_edges.out_dim
+    depth: 10
+    residual_type: none           # PairMixer doesn't update node features (s_backbone=s_init);
+                                  # simple residual would double them every layer → bf16 overflow.
+    virtual_node: logsum
+    layer_type: 'pyg:pairmixer'
+    layer_kwargs:
+      pair_dim: 192              # Main capacity lever; try 128 / 160 / 192 / 224
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      # ---- Speed ----
+      # compile=pair_track + ckpt=false → ~2.6x fwd+bwd at depth=18.
+      # Set ckpt=true if OOM at your training batch size.
+      use_checkpoint: false
+      compile_mode: pair_track
+
+  graph_output_nn:
+    graph:
+      pair_dim: 192              # Must match gnn.layer_kwargs.pair_dim
+      pair_pool: stats           # graph-aware stats pooling (level_in_dim = 6*pair_dim)
+      node_pooling: [max]        # concat node pool onto pair-stats
+      hidden_dims: 256
+      out_dim: 512

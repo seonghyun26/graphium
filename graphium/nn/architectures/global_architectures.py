@@ -1874,7 +1874,8 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
                     layer.max_num_nodes_per_graph = max_nodes
                     layer.max_num_edges_per_graph = max_edges
 
-        self.task_heads.set_max_num_nodes_edges_per_graph(max_nodes, max_edges)
+        if self.task_heads is not None:
+            self.task_heads.set_max_num_nodes_edges_per_graph(max_nodes, max_edges)
 
     def __repr__(self) -> str:
         r"""
@@ -1886,6 +1887,7 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
         if self.pre_nn_edges is not None:
             pre_nn_edges_str = self.pre_nn_edges.__repr__() + "\n\n"
         gnn_str = self.gnn.__repr__() + "\n\n"
+        task_str = ""
         if self.task_heads is not None:
             task_str = self.task_heads.__repr__()
             task_str = "    Task heads:\n    " + "    ".join(task_str.splitlines(True))
@@ -2054,7 +2056,7 @@ class GraphOutputNN(nn.Module, MupMixin):
                 else:
                     pair_out = self._pool_pair_feat(g)
                 if self.node_pool_layer is not None:
-                    node_out = self._pool_layer_forward(g, g["feat"])
+                    node_out = self.node_pool_layer(g, g["feat"])
                     g["graph_feat"] = torch.cat([pair_out, node_out], dim=-1)
                 else:
                     g["graph_feat"] = pair_out

@@ -1,0 +1,3 @@
+defaults:
+  - task_heads: polaris_admet
+  - loss_metrics_datamodule: polaris_admet

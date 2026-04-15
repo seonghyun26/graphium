@@ -6,7 +6,9 @@ from .collate import graphium_collate_fn
 from .datamodule import GraphOGBDataModule
 from .datamodule import MultitaskFromSmilesDataModule
 from .datamodule import ADMETBenchmarkDataModule
+from .datamodule import PolarisADMETBenchmarkDataModule
 from .datamodule import FakeDataModule
+from .belka_datamodule import BelkaBenchmarkDataModule
 
 from .dataset import SingleTaskDataset
 from .dataset import MultitaskDataset

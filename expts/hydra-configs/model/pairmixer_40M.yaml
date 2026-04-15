@@ -38,7 +38,11 @@ architecture:
       pair_dropout: 0.25
       hidden_dim_scaling: 4.0
       opm_hidden: 32
+      # ---- Speed ----
+      # compile=pair_track alone → ~1.97x fwd+bwd; also reduces peak memory.
+      # Flip use_checkpoint to false if there is headroom (adds ~30% more).
       use_checkpoint: true
+      compile_mode: pair_track
 
   graph_output_nn:
     graph:

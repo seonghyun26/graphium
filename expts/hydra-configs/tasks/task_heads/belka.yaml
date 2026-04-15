@@ -1,0 +1,20 @@
+# @package _global_
+
+# Task heads for BELKA (three binary binding targets). One sigmoid-classification head
+# per target. Hidden dim matches the other downstream benchmarks; bump for larger
+# backbones via `++architecture.task_heads.<task>.hidden_dims=...`.
+architecture:
+  task_heads:
+    belka_brd4: &binding_head
+      task_level: graph
+      out_dim: 1
+      hidden_dims: 64
+      depth: 2
+      activation: relu
+      last_activation: sigmoid
+      dropout: 0.5
+      normalization: "layer_norm"
+      last_normalization: "none"
+      residual_type: none
+    belka_hsa: *binding_head
+    belka_seh: *binding_head

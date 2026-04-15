@@ -78,29 +78,115 @@ TASK_METRICS = {
 # TDC Leaderboard SOTA (rank #1): (mean, std, method_name)
 # Source: https://tdcommons.ai/benchmark/admet_group/
 # Last updated: 2026-04
+# Values marked 'MolGPS(paper)' are taken from arXiv:2404.11568 Table 2 where
+# MolGPS reports better-than-leaderboard numbers. Std is not reported in that
+# paper, so it is set to 0.0. MolGPS code is not publicly released.
 TDC_SOTA = {
     'caco2_wang':                       (0.256, 0.006, 'CaliciBoost'),
     'hia_hou':                          (0.993, 0.005, 'MiniMol'),
-    'pgp_broccatelli':                  (0.938, 0.002, 'MapLight + GNN'),
+    'pgp_broccatelli':                  (0.948, 0.000, 'MolGPS(paper)'),
     'bioavailability_ma':               (0.938, 0.002, 'MapLight + GNN'),
-    'lipophilicity_astrazeneca':        (0.456, 0.008, 'MiniMol'),
-    'solubility_aqsoldb':               (0.741, 0.013, 'MiniMol'),
-    'bbb_martins':                      (0.924, 0.003, 'MiniMol'),
-    'ppbr_az':                          (7.440, 0.024, 'Gradient Boost'),
+    'lipophilicity_astrazeneca':        (0.386, 0.000, 'MolGPS(paper)'),
+    'solubility_aqsoldb':               (0.679, 0.000, 'MolGPS(paper)'),
+    'bbb_martins':                      (0.941, 0.000, 'MolGPS(paper)'),
+    'ppbr_az':                          (6.464, 0.000, 'MolGPS(paper)'),
     'vdss_lombardo':                    (0.713, 0.007, 'MapLight + GNN'),
     'cyp2d6_veith':                     (0.790, 0.001, 'MapLight + GNN'),
     'cyp3a4_veith':                     (0.916, 0.000, 'MapLight + GNN'),
     'cyp2c9_veith':                     (0.859, 0.001, 'MapLight + GNN'),
     'cyp2c9_substrate_carbonmangels':   (0.474, 0.025, 'MiniMol'),
     'cyp2d6_substrate_carbonmangels':   (0.737, 0.024, 'KPGT'),
-    'cyp3a4_substrate_carbonmangels':   (0.667, 0.019, 'CFA'),
-    'half_life_obach':                  (0.576, 0.025, 'CFA'),
-    'clearance_hepatocyte_az':          (0.536, 0.020, 'CFA'),
-    'clearance_microsome_az':           (0.630, 0.010, 'MapLight + GNN'),
+    'cyp3a4_substrate_carbonmangels':   (0.680, 0.000, 'MolGPS(paper)'),
+    'half_life_obach':                  (0.631, 0.000, 'MolGPS(paper)'),
+    'clearance_hepatocyte_az':          (0.570, 0.000, 'MolGPS(paper)'),
+    'clearance_microsome_az':           (0.633, 0.000, 'MolGPS(paper)'),
     'ld50_zhu':                         (0.552, 0.009, 'BaseBoosting'),
     'herg':                             (0.880, 0.002, 'MapLight + GNN'),
     'ames':                             (0.871, 0.002, 'ZairaChem'),
     'dili':                             (0.956, 0.006, 'MiniMol'),
+}
+
+# MolGPS (3B) per-task ADMET results from the paper
+# "On the Scalability of GNNs for Molecular Graphs" (arXiv:2404.11568, Table 2).
+# Std not reported in the paper, so set to 0.
+MOLGPS = {
+    'lipophilicity_astrazeneca':        (0.386, 0.0),
+    'caco2_wang':                       (0.292, 0.0),
+    'ld50_zhu':                         (0.557, 0.0),
+    'solubility_aqsoldb':               (0.679, 0.0),
+    'ppbr_az':                          (6.464, 0.0),
+    'bbb_martins':                      (0.941, 0.0),
+    'hia_hou':                          (0.980, 0.0),
+    'pgp_broccatelli':                  (0.948, 0.0),
+    'bioavailability_ma':               (0.701, 0.0),
+    'cyp3a4_substrate_carbonmangels':   (0.680, 0.0),
+    'ames':                             (0.857, 0.0),
+    'herg':                             (0.864, 0.0),
+    'dili':                             (0.942, 0.0),
+    'vdss_lombardo':                    (0.649, 0.0),
+    'half_life_obach':                  (0.631, 0.0),
+    'clearance_microsome_az':           (0.633, 0.0),
+    'clearance_hepatocyte_az':          (0.570, 0.0),
+    'cyp2d6_substrate_carbonmangels':   (0.713, 0.0),
+    'cyp2c9_substrate_carbonmangels':   (0.464, 0.0),
+    'cyp2d6_veith':                     (0.750, 0.0),
+    'cyp3a4_veith':                     (0.900, 0.0),
+    'cyp2c9_veith':                     (0.838, 0.0),
+}
+
+# MolE (AtomEnvs + Supervised) per-task ADMET results from the paper
+# "MolE: a molecular foundation model for drug discovery" (Nature Communications;
+# values from arXiv:2211.02657 Table 4 which matches the Nature Table 1).
+MOLE = {
+    'caco2_wang':                       (0.310, 0.010),
+    'hia_hou':                          (0.963, 0.019),
+    'pgp_broccatelli':                  (0.915, 0.005),
+    'bioavailability_ma':               (0.654, 0.028),
+    'lipophilicity_astrazeneca':        (0.469, 0.009),
+    'solubility_aqsoldb':               (0.792, 0.005),
+    'bbb_martins':                      (0.903, 0.005),
+    'ppbr_az':                          (8.073, 0.335),
+    'vdss_lombardo':                    (0.654, 0.031),
+    'cyp2d6_veith':                     (0.682, 0.008),
+    'cyp3a4_veith':                     (0.867, 0.003),
+    'cyp2c9_veith':                     (0.801, 0.003),
+    'cyp2d6_substrate_carbonmangels':   (0.699, 0.018),
+    'cyp3a4_substrate_carbonmangels':   (0.670, 0.018),
+    'cyp2c9_substrate_carbonmangels':   (0.446, 0.062),
+    'half_life_obach':                  (0.549, 0.024),
+    'clearance_microsome_az':           (0.607, 0.027),
+    'clearance_hepatocyte_az':          (0.381, 0.038),
+    'herg':                             (0.823, 0.009),
+    'ames':                             (0.813, 0.005),
+    'dili':                             (0.883, 0.021),
+    'ld50_zhu':                         (0.577, 0.019),
+}
+
+# MiniMol (GINE) per-task ADMET results from the official repo README.
+# Source: https://github.com/graphcore-research/minimol
+MINIMOL_GIT = {
+    'caco2_wang':                       (0.350, 0.018),
+    'bioavailability_ma':               (0.689, 0.020),
+    'lipophilicity_astrazeneca':        (0.456, 0.008),
+    'solubility_aqsoldb':               (0.741, 0.013),
+    'hia_hou':                          (0.993, 0.005),
+    'pgp_broccatelli':                  (0.942, 0.002),
+    'bbb_martins':                      (0.924, 0.003),
+    'ppbr_az':                          (7.696, 0.125),
+    'vdss_lombardo':                    (0.535, 0.027),
+    'cyp2c9_veith':                     (0.823, 0.006),
+    'cyp2d6_veith':                     (0.719, 0.004),
+    'cyp3a4_veith':                     (0.877, 0.001),
+    'cyp2c9_substrate_carbonmangels':   (0.474, 0.025),
+    'cyp2d6_substrate_carbonmangels':   (0.695, 0.032),
+    'cyp3a4_substrate_carbonmangels':   (0.663, 0.008),
+    'half_life_obach':                  (0.495, 0.042),
+    'clearance_hepatocyte_az':          (0.446, 0.029),
+    'clearance_microsome_az':           (0.628, 0.005),
+    'ld50_zhu':                         (0.585, 0.005),
+    'herg':                             (0.846, 0.016),
+    'ames':                             (0.849, 0.004),
+    'dili':                             (0.956, 0.006),
 }
 
 
@@ -186,6 +272,10 @@ _PRETRAIN_PATTERNS = [
     # DTI v2 variants (MUST come before toymix_dti / dti patterns)
     ('toymix_dti_esmc_v2', ['toymix_dti_esmc_v2', 'toymix-dti-esmc-v2']),
     ('toymix_dti_v2',      ['toymix_dti_v2', 'toymix-dti-v2']),
+    # DTI pActivity variants (MUST come before toymix_dti / dti / bbbc047 patterns)
+    ('bbbc047_dti_pactivity', ['bbbc047_dti_pactivity', 'bbbc047-dti-pactivity']),
+    ('toymix_dti_pactivity',  ['toymix_dti_pactivity', 'toymix-dti-pactivity']),
+    ('dti_pactivity',         ['dti_pactivity', 'dti-pactivity']),
     # Filtered dataset variants (must come before unfiltered)
     ('toymix_dti_10k_filtered', ['toymix_dti_10k_filtered', 'toymix-dti-10k-filtered']),
     ('toymix_dti_filtered',     ['toymix_dti_filtered', 'toymix-dti-filtered']),

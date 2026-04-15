@@ -23,7 +23,14 @@ architecture:
       pair_dropout: 0.25
       hidden_dim_scaling: 4.0
       opm_hidden: 32
-      use_checkpoint: true
+      # ---- Speed ----
+      # compile=pair_track + ckpt=F → 2.6x fwd+bwd at depth=18, B=128
+      # (bit-exact forward output; grad diff within bf16 eps).
+      # Peak mem drops from ~68 GB to ~52 GB, so this fits easily on 96 GB
+      # Blackwell GPUs. Set ckpt=true if running at a larger depth/B that
+      # would otherwise OOM.
+      use_checkpoint: false
+      compile_mode: pair_track
       # ---- Pair representation initialization ----
       # z_0 = z_OPM + z_pair_prior (additive).  Guarantees a non-zero,
       # graph-aware pair representation at layer 0 so the triangle

@@ -200,10 +200,20 @@ class PairMixerLayerPyg(BaseGraphModule):
             self.out_proj = nn.Identity()
 
         # ---- Apply torch.compile if requested ----
+        # ``mode="default"`` with ``dynamic=True`` compiles once against
+        # symbolic shapes and skips the CUDA-graph capture used by
+        # ``reduce-overhead``. CUDA graphs break on PyG batches where
+        # N_max varies per step. ``default, dynamic=True`` still fuses
+        # LayerNorm/matmul/elementwise kernels → ~2.6x fwd+bwd at
+        # depth=18 (bit-exact outputs vs eager, grad diff within bf16 eps).
         if compile_mode == "pair_track":
-            self._pair_track_ops = torch.compile(self._pair_track_ops, mode="reduce-overhead")
+            self._pair_track_ops = torch.compile(
+                self._pair_track_ops, mode="default", dynamic=True,
+            )
         elif compile_mode == "full":
-            self.forward = torch.compile(self.forward, mode="reduce-overhead")
+            self.forward = torch.compile(
+                self.forward, mode="default", dynamic=True,
+            )
 
     def _pair_track_ops(self, z: Tensor, pair_mask: Tensor) -> Tensor:
         """Pair-track operations: triangle multiplication + transition only.
@@ -256,6 +266,40 @@ class PairMixerLayerPyg(BaseGraphModule):
             Updated batch with ``pair_feat``, ``pair_mask``, and
             (pass-through) ``feat``.
         """
+        # Fast path: middle layers (layer_idx>0) with identity out_proj don't
+        # need s_dense at all — the pair track operates purely on pair_feat
+        # and pair_mask, which were produced & cached by layer 0. Skipping
+        # the dense↔sparse round-trip removes a scatter_add, an index_put,
+        # an index_select, and a pair_mask recomputation per layer. At
+        # depth=18 this saves 17 round-trips per forward.
+        _is_identity_out = isinstance(self.out_proj, nn.Identity)
+        _have_cached_pair = (
+            getattr(batch, "pair_feat", None) is not None
+            and getattr(batch, "pair_mask", None) is not None
+        )
+        if self.pair_init is None and _is_identity_out and _have_cached_pair:
+            z = batch.pair_feat
+            pair_mask = batch.pair_mask
+
+            if self.use_checkpoint and self.training:
+                z = _checkpoint(
+                    self._pair_track_ops, z, pair_mask,
+                    use_reentrant=False,
+                )
+            else:
+                z = self._pair_track_ops(z, pair_mask)
+
+            if self.use_moe:
+                B, N, _, D = z.shape
+                z_flat = z.reshape(B, N * N, D)
+                mask_flat = pair_mask.reshape(B, N * N)
+                z = z + self.transition_z(z_flat, node_mask=mask_flat).reshape(B, N, N, D)
+                z = z * pair_mask.unsqueeze(-1)
+
+            batch.pair_feat = z
+            return batch
+
+        # Slow path: layer 0 (needs pair_init) or non-identity out_proj.
         feat = batch.feat  # (total_nodes, D_s) – sparse
 
         # --- Convert to dense (B, N_max, D_s) ---

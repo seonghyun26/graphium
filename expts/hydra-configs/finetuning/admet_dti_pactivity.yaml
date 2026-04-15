@@ -1,0 +1,62 @@
+# @package _global_
+#
+# ADMET fine-tuning from a pure DTI-pActivity pretrained model (full DTI, no ToyMix).
+# The pretrain only has a `dti_pactivity` head with aux_in_dim=1152 (ESM-C
+# protein embedding), which cannot be reused directly for ADMET (no protein at
+# inference time). We reuse the backbone up through graph_output_nn and rebuild
+# the task head via keep_modules_after_finetuning_module, nulling aux_in_dim
+# so the new head takes only graph features.
+
+defaults:
+  - override /tasks/loss_metrics_datamodule: admet
+
+constants:
+  task: lipophilicity_astrazeneca
+  name: finetuning_${constants.task}_dti_pactivity
+  wandb:
+    name: ${constants.name}
+    project: ${constants.task}
+    entity: multitask-gnn
+  seed: 42
+  max_epochs: 100
+  data_dir: expts/data/admet/${constants.task}
+  raise_train_error: false
+  datacache_path: /home/shpark/prj-molrepr/datacache/admet/${constants.task}
+  metric: ${get_metric_name:${constants.task}}
+
+predictor:
+  optim_kwargs:
+    lr: 1.e-4
+  torch_scheduler_kwargs:
+    module_type: CosineAnnealingLR
+    T_max: ${constants.max_epochs}
+    eta_min: 1.0e-6
+
+datamodule:
+  args:
+    num_workers: 0
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    save_last: false
+
+finetuning:
+  task: ${constants.task}
+  level: graph
+  pretrained_model: dummy-pretrained-model
+  finetuning_module: graph_output_nn
+  sub_module_from_pretrained: graph
+  new_sub_module: graph
+  added_depth: 0
+  unfreeze_pretrained_depth: 0
+  epoch_unfreeze_all: 50
+  keep_modules_after_finetuning_module:
+    task_heads-dti_pactivity:
+      new_sub_module: ${constants.task}
+      hidden_dims: 256
+      depth: 2
+      out_dim: 1
+      aux_in_dim: 0
+      aux_label_split: 0
+      last_activation: ${get_last_activation:${constants.task}}

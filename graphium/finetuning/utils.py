@@ -21,16 +21,18 @@ from graphium.trainer import PredictorModule
 import graphium
 
 
+_BENCHMARK_NAMES_ARG_BY_MODULE = {
+    "ADMETBenchmarkDataModule": "tdc_benchmark_names",
+    "PolarisADMETBenchmarkDataModule": "polaris_benchmark_names",
+}
+
+
 def filter_cfg_based_on_admet_benchmark_name(config: Dict[str, Any], names: Union[List[str], str]):
     """
-    Filter a base config for the full TDC ADMET benchmarking group to only
-    have settings related to a subset of the endpoints
+    Filter a base config for a benchmark datamodule to only have settings related to a
+    subset of task names. Originally TDC-ADMET specific; now also filters Polaris ADME
+    and generic single-task setups (MultitaskFromSmilesDataModule) by task-head name.
     """
-
-    if config["datamodule"]["module_type"] != "ADMETBenchmarkDataModule":
-        # NOTE (cwognum): For now, this implies we only support the ADMET benchmark from TDC.
-        #    It is easy to extend this in the future to support more datasets.
-        raise ValueError("You can only use this method for the `ADMETBenchmarkDataModule`")
 
     if isinstance(names, str):
         names = [names]
@@ -40,8 +42,10 @@ def filter_cfg_based_on_admet_benchmark_name(config: Dict[str, Any], names: Unio
 
     cfg = deepcopy(config)
 
-    # Update the datamodule arguments
-    cfg["datamodule"]["args"]["tdc_benchmark_names"] = names
+    module_type = cfg["datamodule"]["module_type"]
+    benchmark_arg = _BENCHMARK_NAMES_ARG_BY_MODULE.get(module_type)
+    if benchmark_arg is not None:
+        cfg["datamodule"]["args"][benchmark_arg] = names
 
     # Filter the relevant config sections
     if "architecture" in cfg and "task_heads" in cfg["architecture"]:
