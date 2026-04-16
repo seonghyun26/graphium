@@ -452,6 +452,13 @@ def load_trainer(
     else:
         callbacks.append(LearningRateMonitor())
 
+    # Optional linear-probe monitor callback (enabled via `+probe=admet_linear`).
+    probe_cfg = config.get("probe") if hasattr(config, "get") else None
+    if probe_cfg is not None and probe_cfg.get("enabled", False):
+        from graphium.finetuning.linear_probe import ADMETLinearProbeCallback
+
+        callbacks.append(ADMETLinearProbeCallback(probe_cfg))
+
     # Define the logger parameters
     wandb_cfg = config["constants"].get("wandb")
     if wandb_cfg is not None:

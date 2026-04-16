@@ -45,6 +45,10 @@ arch_flags_for () {
         F2) dsf=128; dz=256; depth=6  ;;   # 11.62 M — D minus one layer (≤12M)
         F3) dsf=96;  dz=224; depth=8  ;;   # 11.62 M — intermediate width × deeper
         F4) dsf=192; dz=192; depth=11 ;;   # ~11.8 M — E + one layer
+        G)  dsf=64;  dz=352; depth=3  ;;   # 11.29 M — extreme wide-shallow (pair-dominated)
+        H)  dsf=192; dz=192; depth=10 ;;   # 11.3 M — phase-1 E geometry, expanded features
+        F3hlr)  dsf=96; dz=224; depth=8 ;; # F3 geometry + high LR (2e-4); set via EXTRA_FLAGS
+        F3long) dsf=96; dz=224; depth=8 ;; # F3 geometry + 200 epochs; set via EXTRA_FLAGS
         *)  echo "Unknown config ${name}" >&2; return 1 ;;
     esac
     echo "++architecture.pre_nn.out_dim=${dsf}"
@@ -157,7 +161,8 @@ if [[ "${USE_FEATURES2:-0}" == "1" ]]; then
     # Unique datacache per (cfg, pi) group to avoid featurization races.
     CACHE_KEY="${CONFIGS_OVERRIDE:-${BEST_CFG:-x}}"
     CACHE_KEY="${CACHE_KEY// /_}"
-    CACHE_KEY="${CACHE_KEY}_${PAIR_INIT_OVERRIDE// /_}"
+    CACHE_KEY="${CACHE_KEY}_${PAIR_INIT_OVERRIDE:-opm}"
+    CACHE_KEY="${CACHE_KEY// /_}"
     export DATACACHE_SUFFIX="-feat2-${CACHE_KEY}"
 fi
 

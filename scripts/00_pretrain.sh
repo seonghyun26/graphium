@@ -81,7 +81,7 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-48}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
-    pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)
+    pairmixer_auto|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)
         ;;  # dims, depth, batch size all in YAML configs
     *)
         echo "Error: unknown model '${MODEL}'."

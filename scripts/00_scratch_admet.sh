@@ -61,6 +61,9 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-16}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
+    pairmixer_auto)
+        BATCH_SIZE=${BATCH_SIZE:-32}
+        ;;
     pairmixer_10M)
         DIM=${DIM:-256}
         GNN_DEPTH=${GNN_DEPTH:-18}
@@ -96,6 +99,7 @@ case "${MODEL}" in
     pairformer)       DIM_FLAGS="" ;;  # pairformer uses config defaults
     pairformer_boltz|pairformer_17M|pairformer_52M) DIM_FLAGS="" ;;
     pairmixer)        DIM_FLAGS="" ;;
+    pairmixer_auto)   DIM_FLAGS="" ;;  # dims set in model config
     pairmixer_10M)    DIM_FLAGS="" ;;  # dims set in model config
     pairmixer_20M)    DIM_FLAGS="" ;;  # dims set in model config
     pairmixer_40M)    DIM_FLAGS="" ;;  # dims set in model config
@@ -106,7 +110,7 @@ esac
 # Models with dedicated configs (gpspp_800M, pairformer_*, pairmixer_*) get
 # dims/depth from their YAML — don't override via CLI.
 case "${MODEL}" in
-    gpspp_800M|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_10M|pairmixer_20M|pairmixer_40M|pairmixer_boltz)
+    gpspp_800M|pairmixer_auto|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_10M|pairmixer_20M|pairmixer_40M|pairmixer_boltz)
         ARCH_FLAGS=""
         DATAMODULE_FLAGS="++datamodule.args.batch_size_training=${BATCH_SIZE}"
         echo "=== Training ${MODEL} from scratch on ADMET (config defaults) ==="

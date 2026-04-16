@@ -127,6 +127,12 @@ def modify_cfg_for_finetuning(cfg: Dict[str, Any]):
     # Update config
     new_module_kwargs.update(upd_kwargs)
 
+    # Apply explicit overrides from the finetuning config (e.g. aux_in_dim: 0
+    # to strip protein-embedding input when the downstream task has no aux).
+    module_overrides = cfg_finetune.pop("module_overrides", None)
+    if module_overrides is not None:
+        new_module_kwargs.update(module_overrides)
+
     if sub_module_from_pretrained is None:
         cfg_arch[finetuning_module] = new_module_kwargs
     else:

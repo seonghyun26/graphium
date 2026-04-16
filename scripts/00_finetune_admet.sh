@@ -57,7 +57,7 @@ case "${MODEL}" in
     pairformer_17M|pairformer_52M)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
-    pairmixer_10M|pairmixer_20M|pairmixer_40M|pairmixer_boltz)
+    pairmixer_auto|pairmixer_10M|pairmixer_20M|pairmixer_40M|pairmixer_boltz)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
     *)
@@ -159,18 +159,6 @@ fi
 
 TAGS="['${MODEL}','finetune','admet','${PRETRAIN_DATASET}'${MODEL_TAG:+,'${MODEL_TAG}'}${COSINE_TAG}]"
 
-# Configs using keep_modules_after_finetuning_module don't attach a separate
-# finetuning_head (the kept task_heads entry IS the new head), so we must not
-# emit ++finetuning.finetuning_head.* overrides.
-case "${FINETUNING_CONFIG}" in
-    admet_dti_pactivity*)
-        FT_HEAD_FLAGS=""
-        ;;
-    *)
-        FT_HEAD_FLAGS="++finetuning.finetuning_head.in_dim=${FINETUNE_DIM} ++finetuning.finetuning_head.hidden_dims=${FINETUNE_DIM} ++finetuning.new_out_dim=${FINETUNE_DIM} ++finetuning.finetuning_head.depth=${ADDED_DEPTH}"
-        ;;
-esac
-
 echo "=== Fine-tuning ${MODEL} on ADMET (ckpt=${CKPT}, pretrain=${PRETRAIN_DATASET}, unfreeze=${UNFREEZE_DEPTH}) ==="
 
 for task in "${ADMET_TASKS[@]}"; do
@@ -188,7 +176,10 @@ for task in "${ADMET_TASKS[@]}"; do
         ++finetuning.pretrained_model=${CKPT} \
         ++finetuning.unfreeze_pretrained_depth=${UNFREEZE_DEPTH} \
         ++finetuning.epoch_unfreeze_all=${EPOCH_UNFREEZE_ALL} \
-        ${FT_HEAD_FLAGS} \
+        ++finetuning.finetuning_head.in_dim=${FINETUNE_DIM} \
+        ++finetuning.finetuning_head.hidden_dims=${FINETUNE_DIM} \
+        ++finetuning.new_out_dim=${FINETUNE_DIM} \
+        ++finetuning.finetuning_head.depth=${ADDED_DEPTH} \
         ++finetuning.added_depth=${ADDED_DEPTH} \
         ++architecture.task_heads.${task}.hidden_dims=${FINETUNE_DIM} \
         ++trainer.model_checkpoint.dirpath=models_checkpoints/admet/${PRETRAIN_DATASET}/${MODEL}/${task}/ \

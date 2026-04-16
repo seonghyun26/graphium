@@ -207,11 +207,15 @@ def assign_folds(clusters: list[list[int]], n_rows: int, n_folds: int = 6,
 
 
 def write_graphium_csv(
-    smiles: pd.Series, label_matrix: pd.DataFrame, out_csv: Path
+    smiles: pd.Series, label_matrix: pd.DataFrame, folds: np.ndarray, out_csv: Path
 ) -> pd.DataFrame:
     """Encode label_matrix (-1/0/+1) as graphium-friendly (0/NaN/1) CSV with a
-    leading `smiles` column. Writes columns in EXPECTED_ASSAY_IDS order; missing
-    assays become all-NaN.
+    leading `smiles` column and a trailing `fold` column (Butina fold id 0..5 per
+    row). Writes assay columns in EXPECTED_ASSAY_IDS order; missing assays become
+    all-NaN.
+
+    The `fold` column exists so downstream code can do 6-fold CV without parsing
+    the pre-packed splits CSV (which lumps folds 0-3 into a single `train` list).
     """
     # -1 inactive -> 0, +1 active -> 1, 0 unknown -> NaN.
     out = label_matrix.astype(float).replace({-1.0: 0.0, 0.0: np.nan, 1.0: 1.0})
@@ -228,6 +232,7 @@ def write_graphium_csv(
     out = out[EXPECTED_ASSAY_IDS]
     out.columns = [f"assay_{a}" for a in EXPECTED_ASSAY_IDS]
     out.insert(0, "smiles", smiles.values)
+    out["fold"] = folds
 
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(out_csv, index=False)
@@ -304,7 +309,7 @@ def main() -> None:
 
     # 7. Write graphium-format outputs.
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    write_graphium_csv(smiles, mat, args.out_dir / "cell_bioactivity.csv")
+    write_graphium_csv(smiles, mat, folds, args.out_dir / "cell_bioactivity.csv")
     write_splits_csv(folds, args.out_dir / "cell_bioactivity_split.csv")
     logger.info("done")
 

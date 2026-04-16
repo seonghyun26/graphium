@@ -1,13 +1,13 @@
 # @package _global_
 
-# PairMixer search anchor (~12M) with the ToyMix dataset.
+# PairMixer F3hlr (best ≤12M config) with the ToyMix dataset.
 constants:
   name: toymix_pairmixer_auto
   seed: 42
   max_epochs: 100
   data_dir: ./data/graphium/neurips2023/small-dataset
   raise_train_error: true
-  datacache_path: ../datacache/neurips2023-small/
+  datacache_path: ../datacache/neurips2023-small-feat2/
 
 datamodule:
   args:

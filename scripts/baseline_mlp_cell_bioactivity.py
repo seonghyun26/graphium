@@ -131,9 +131,14 @@ class FpDataset(Dataset):
 
 
 def load_dataset(args: argparse.Namespace):
-    """Load prep'd CSVs, featurize per `--features`, return per-split tensors."""
+    """Load prep'd CSV, featurize per `--features`, return (feats, labels,
+    folds, valid_mask, label_cols). Split rotation is done per-fold in run_cv."""
     df = pd.read_csv(args.csv)
-    splits = pd.read_csv(args.splits)
+    if "fold" not in df.columns:
+        raise RuntimeError(
+            "cell_bioactivity.csv is missing the `fold` column; re-run "
+            "scripts/prep_cell_bioactivity.py to regenerate it."
+        )
     label_cols = [c for c in df.columns if c.startswith("assay_")]
     logger.info(f"loaded {len(df):,} compounds x {len(label_cols)} assays")
 
@@ -147,36 +152,26 @@ def load_dataset(args: argparse.Namespace):
     if (~valid).any():
         logger.warning(
             f"{(~valid).sum()} compounds invalid for --features={args.features} "
-            "(unparseable SMILES or missing profile); dropping from splits"
+            "(unparseable SMILES or missing profile); will be dropped per-fold"
         )
 
     # Labels: 0/1/NaN -> -1/+1/0 (BCEMASKEDLoss convention).
     raw = df[label_cols].values.astype(np.float32)
     labels = np.where(np.isnan(raw), 0.0, np.where(raw > 0.5, 1.0, -1.0)).astype(np.float32)
 
-    splits_idx = {}
-    for split in ("train", "val", "test"):
-        idx = splits[split].dropna().astype(int).values
-        idx = idx[valid[idx]]
-        splits_idx[split] = idx
-    logger.info(
-        "split sizes (post-filter): "
-        f"train={len(splits_idx['train']):,} "
-        f"val={len(splits_idx['val']):,} "
-        f"test={len(splits_idx['test']):,}"
-    )
+    folds = df.fold.values.astype(np.int8)
+    return feats, labels, folds, valid, label_cols
 
-    # Dense real-valued features (CPCNN) need standardization before an MLP
-    # trained with SGD/Adam — without it, lr tuning becomes brittle and the
-    # gradient magnitude blows up. Binary ECFP bits are left alone.
-    if args.features == "cpcnn":
-        mu = feats[splits_idx["train"]].mean(axis=0, keepdims=True)
-        sd = feats[splits_idx["train"]].std(axis=0, keepdims=True) + 1e-6
-        feats = ((feats - mu) / sd).astype(np.float32)
-        logger.info(f"standardized CPCNN features using train-split stats "
-                    f"(mean abs after: {np.abs(feats[splits_idx['train']]).mean():.3f})")
 
-    return feats, labels, splits_idx, label_cols
+def split_indices(folds: np.ndarray, valid: np.ndarray, test_fold: int,
+                  n_folds: int = 6) -> dict:
+    """For 6-fold CV rotation: test={test_fold}, val={(test_fold+1)%6}, train=rest."""
+    val_fold = (test_fold + 1) % n_folds
+    idx_all = np.arange(len(folds))
+    test_idx = idx_all[(folds == test_fold) & valid]
+    val_idx = idx_all[(folds == val_fold) & valid]
+    train_idx = idx_all[(~np.isin(folds, [test_fold, val_fold])) & valid]
+    return {"train": train_idx, "val": val_idx, "test": test_idx}
 
 
 # ─── Model + loss ──────────────────────────────────────────────────────────────
@@ -215,7 +210,9 @@ class FocalBCEMaskedLoss(nn.Module):
         sel_logits = logits[mask > 0]
         sel_tgt = tgt[mask > 0]
         if sel_logits.numel() == 0:
-            return logits.new_zeros(())
+            # Empty-mask batch: keep a connection to the graph so .backward()
+            # doesn't crash with "element 0 of tensors does not require grad".
+            return (logits * 0.0).sum()
         basic = self.bce(sel_logits, sel_tgt)
         focal = (sel_tgt - torch.sigmoid(sel_logits)).abs() ** self.gamma
         return (focal * basic).mean()
@@ -265,14 +262,20 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device,
 # ─── Train ─────────────────────────────────────────────────────────────────────
 
 
-def run(args: argparse.Namespace) -> dict:
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
-    device = torch.device(args.device)
-    logger.info(f"features={args.features} device={device}")
-
-    feats, labels, splits_idx, label_cols = load_dataset(args)
-    in_dim = feats.shape[1]
+def _train_one_fold(
+    feats: np.ndarray, labels: np.ndarray, splits_idx: dict,
+    label_cols: List[str], args: argparse.Namespace, device: torch.device,
+    tag: str = "",
+) -> dict:
+    """Train once on the given train/val/test index split. Dense features
+    (CPCNN) are standardized using the *train-split* stats of this fold so CV
+    folds don't leak test stats back into training.
+    """
+    # Per-fold standardization of dense features (no-op for binary ECFP).
+    if args.features == "cpcnn":
+        mu = feats[splits_idx["train"]].mean(axis=0, keepdims=True)
+        sd = feats[splits_idx["train"]].std(axis=0, keepdims=True) + 1e-6
+        feats = ((feats - mu) / sd).astype(np.float32)
 
     def make_loader(name: str, shuffle: bool) -> DataLoader:
         idx = splits_idx[name]
@@ -288,6 +291,7 @@ def run(args: argparse.Namespace) -> dict:
     val_loader = make_loader("val", shuffle=False)
     test_loader = make_loader("test", shuffle=False)
 
+    in_dim = feats.shape[1]
     model = MLP(in_dim, args.hidden_dim, args.num_hidden, len(label_cols)).to(device)
     criterion = FocalBCEMaskedLoss(gamma=2.0)
     if args.optimizer == "sgd":
@@ -297,8 +301,10 @@ def run(args: argparse.Namespace) -> dict:
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr,
                                      weight_decay=args.weight_decay)
     logger.info(
-        f"in_dim={in_dim} | optim={args.optimizer} lr={args.lr} "
-        f"| model params: {sum(p.numel() for p in model.parameters()):,}"
+        f"[{tag}] in_dim={in_dim} optim={args.optimizer} lr={args.lr} "
+        f"params={sum(p.numel() for p in model.parameters()):,} "
+        f"sizes(train/val/test)={len(splits_idx['train']):,}/"
+        f"{len(splits_idx['val']):,}/{len(splits_idx['test']):,}"
     )
 
     best_val_auroc, best_state, patience = -1.0, None, 0
@@ -313,11 +319,12 @@ def run(args: argparse.Namespace) -> dict:
             optimizer.step()
             train_losses.append(loss.item())
         val_metrics = evaluate(model, val_loader, device, label_cols)
-        logger.info(
-            f"epoch {epoch:3d} | train_loss={np.mean(train_losses):.4f} "
-            f"| val_auroc={val_metrics['auroc_macro']:.4f} "
-            f"val_auprc={val_metrics['auprc_macro']:.4f}"
-        )
+        if epoch == 1 or epoch % 10 == 0:
+            logger.info(
+                f"[{tag}] epoch {epoch:3d} | train_loss={np.mean(train_losses):.4f} "
+                f"| val_auroc={val_metrics['auroc_macro']:.4f} "
+                f"val_auprc={val_metrics['auprc_macro']:.4f}"
+            )
         if val_metrics["auroc_macro"] > best_val_auroc:
             best_val_auroc = val_metrics["auroc_macro"]
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
@@ -327,32 +334,78 @@ def run(args: argparse.Namespace) -> dict:
         if patience > args.lr_patience:
             for g in optimizer.param_groups:
                 g["lr"] *= 0.5
-                logger.info(f"plateau: dropped lr to {g['lr']:.4g}")
             patience = 0
             if optimizer.param_groups[0]["lr"] < args.min_lr:
-                logger.info(f"lr below {args.min_lr}; early stop")
+                logger.info(f"[{tag}] lr below {args.min_lr} at epoch {epoch}; early stop")
                 break
 
     model.load_state_dict(best_state)
     test_metrics = evaluate(model, test_loader, device, label_cols)
     logger.info(
-        f"TEST | features={args.features} "
-        f"auroc={test_metrics['auroc_macro']:.4f} "
+        f"[{tag}] TEST auroc={test_metrics['auroc_macro']:.4f} "
         f"auprc={test_metrics['auprc_macro']:.4f} "
-        f"({test_metrics['n_assays_scored']} assays scored)"
+        f"(best val_auroc={best_val_auroc:.4f}, "
+        f"{test_metrics['n_assays_scored']} assays scored)"
     )
     return test_metrics
+
+
+def run(args: argparse.Namespace) -> dict:
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    device = torch.device(args.device)
+    logger.info(f"features={args.features} device={device} cv={args.cv}")
+    feats, labels, folds, valid, label_cols = load_dataset(args)
+
+    # Default test fold (matches the original pre-packed splits CSV: test=5, val=4).
+    test_folds = list(range(6)) if args.cv else [5]
+
+    per_fold = []
+    for k in test_folds:
+        splits_idx = split_indices(folds, valid, test_fold=k)
+        tag = f"fold{k}" if args.cv else "single"
+        # Reset seeds per fold so fold N isn't influenced by fold N-1 training.
+        torch.manual_seed(args.seed + k)
+        np.random.seed(args.seed + k)
+        per_fold.append(_train_one_fold(feats, labels, splits_idx, label_cols, args, device, tag))
+
+    aurocs = np.array([m["auroc_macro"] for m in per_fold])
+    auprcs = np.array([m["auprc_macro"] for m in per_fold])
+    summary = {
+        "auroc_mean": float(aurocs.mean()),
+        "auroc_std": float(aurocs.std(ddof=0)),
+        "auprc_mean": float(auprcs.mean()),
+        "auprc_std": float(auprcs.std(ddof=0)),
+        "n_folds": len(per_fold),
+        "per_fold_auroc": aurocs.tolist(),
+        "per_fold_auprc": auprcs.tolist(),
+    }
+    if args.cv:
+        logger.info(
+            f"CV SUMMARY ({len(per_fold)} folds) | "
+            f"auroc={summary['auroc_mean']:.4f} ± {summary['auroc_std']:.4f} | "
+            f"auprc={summary['auprc_mean']:.4f} ± {summary['auprc_std']:.4f}"
+        )
+        logger.info(f"per-fold auroc: "
+                    f"{', '.join(f'{a:.4f}' for a in aurocs)}")
+    return summary
 
 
 # ─── Results CSV append (graphium-compatible columns) ──────────────────────────
 
 
-def append_results_row(test_metrics: dict, args: argparse.Namespace) -> None:
+def append_results_row(summary: dict, args: argparse.Namespace) -> None:
+    """Append one row to results/experiment_results.csv. For CV runs the
+    `test` columns are the fold-mean; fold-std lands in `_std` sibling columns.
+    """
     results_dir = Path(args.results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
     csv_path = results_dir / "experiment_results.csv"
 
     model_name = f"{args.features}_mlp"  # ecfp_mlp or cpcnn_mlp
+    tag_list = [model_name, "baseline", "cell_bioactivity"]
+    if args.cv:
+        tag_list.append("cv6")
     row: dict = {
         "timestamp": datetime.now().isoformat(),
         "model": model_name,
@@ -365,10 +418,16 @@ def append_results_row(test_metrics: dict, args: argparse.Namespace) -> None:
         "hidden_dim": args.hidden_dim,
         "gnn_depth": "N/A",
         "output_dir": str(Path.cwd()),
-        "wandb_tags": f"['{model_name}','baseline','cell_bioactivity']",
-        "graph_cell_bioactivity/auroc/test": test_metrics["auroc_macro"],
-        "graph_cell_bioactivity/auprc/test": test_metrics["auprc_macro"],
+        "wandb_tags": "[" + ",".join(f"'{t}'" for t in tag_list) + "]",
+        "n_folds": summary["n_folds"],
+        "graph_cell_bioactivity/auroc/test": summary["auroc_mean"],
+        "graph_cell_bioactivity/auroc_std/test": summary["auroc_std"],
+        "graph_cell_bioactivity/auprc/test": summary["auprc_mean"],
+        "graph_cell_bioactivity/auprc_std/test": summary["auprc_std"],
     }
+    # Per-fold AUROC for downstream analysis (only meaningful when --cv).
+    for i, au in enumerate(summary["per_fold_auroc"]):
+        row[f"graph_cell_bioactivity/auroc_fold{i}/test"] = au
 
     if csv_path.exists():
         with open(csv_path, "r", newline="") as f:
@@ -423,6 +482,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--min-lr", type=float, default=1e-5)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--device", default="cuda:5" if torch.cuda.is_available() else "cpu")
+    p.add_argument("--cv", action="store_true",
+                   help="Run 6-fold CV (test rotated across folds 0..5). "
+                        "Default: single split with test=fold 5, val=fold 4.")
     p.add_argument("--no-results-csv", action="store_true",
                    help="Skip appending to results/experiment_results.csv.")
     args = p.parse_args()
@@ -439,6 +501,6 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
-    test_metrics = run(args)
+    summary = run(args)
     if not args.no_results_csv:
-        append_results_row(test_metrics, args)
+        append_results_row(summary, args)

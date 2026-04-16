@@ -1,28 +1,23 @@
 # @package _global_
-# PairMixer search anchor (~12M params target).
+# PairMixer ~12M configuration (F3hlr — best from architecture search).
 #
-# Starting point for architecture search around the 12M param budget.
-# Override any of these via Hydra CLI, e.g.:
-#   graphium-train model=pairmixer_auto \
-#     ++architecture.gnn.depth=12 \
-#     ++architecture.gnn.layer_kwargs.pair_dim=160 \
-#     ++architecture.pre_nn.out_dim=96 \
-#     ++architecture.pre_nn_edges.out_dim=32
+# D_s=96, D_z=224, depth=8 → 11.6M params
+#   pair-track backbone: 8 layers * 24 * D_z^2 ≈ 9.6M
+#   extras (pre_nn, pre_nn_edges, OPM, graph_output_nn, task heads) ≈ 2M
 #
-# Levers (and rough sensitivity):
-#   gnn.depth                              — linear in param count
-#   gnn.layer_kwargs.pair_dim (D_z)        — quadratic in param count (main lever)
-#   gnn.hidden_dims / pre_nn.out_dim (D_s) — affects OPM + node track
-#   pre_nn_edges.out_dim                   — small, feeds pair init
-#   gnn.virtual_node (logsum | none)       — +1 global node
-#   graph_output_nn.graph.node_pooling     — concat node stats onto head input
+# Search result (2026-04-15):
+#   - Phase 1: D_z width beats depth at fixed param budget
+#   - Phase 3: expanded features (hybridization, chirality, electronegativity,
+#              vdw-radius, num-ring, mass, conjugated) improve caco2/bbb_martins
+#   - LR=2e-4 (5× default) is the single biggest lever —
+#     caco2_wang MAE 1.16 → 0.609, clearance_microsome_az 0.0 → 0.15
 #
-# Anchor: D_s=128, D_z=192, depth=10 → ~12M (pair-track 10 * 24 * 192^2 ≈ 8.8M).
+# Reference: Ouyang-Zhang et al., arXiv:2510.18870
 
 architecture:
   pre_nn:
-    out_dim: 128
-    hidden_dims: 128
+    out_dim: 96
+    hidden_dims: 96
 
   pre_nn_edges:
     out_dim: 64                  # feeds pair init; small by default, overridable
@@ -36,30 +31,42 @@ architecture:
     residual_type: none
 
   gnn:
-    in_dim: 128
-    out_dim: 128
-    hidden_dims: 128
+    in_dim: 96
+    out_dim: 96
+    hidden_dims: 96
     in_dim_edges: 64             # Must match pre_nn_edges.out_dim
-    depth: 10
+    depth: 8
     residual_type: none           # PairMixer doesn't update node features (s_backbone=s_init);
                                   # simple residual would double them every layer → bf16 overflow.
     virtual_node: logsum
     layer_type: 'pyg:pairmixer'
     layer_kwargs:
-      pair_dim: 192              # Main capacity lever; try 128 / 160 / 192 / 224
+      pair_dim: 224              # Main capacity lever (search winner: 224 > 192 > 256@shallow)
       pair_dropout: 0.25
       hidden_dim_scaling: 4.0
       opm_hidden: 32
-      # ---- Speed ----
-      # compile=pair_track + ckpt=false → ~2.6x fwd+bwd at depth=18.
-      # Set ckpt=true if OOM at your training batch size.
-      use_checkpoint: false
+      use_checkpoint: true
       compile_mode: pair_track
 
   graph_output_nn:
     graph:
-      pair_dim: 192              # Must match gnn.layer_kwargs.pair_dim
+      pair_dim: 224              # Must match gnn.layer_kwargs.pair_dim
       pair_pool: stats           # graph-aware stats pooling (level_in_dim = 6*pair_dim)
       node_pooling: [max]        # concat node pool onto pair-stats
       hidden_dims: 256
       out_dim: 512
+
+# ── Expanded featurization (search-validated) ─────────────────────────────────
+# Adds hybridization, chirality (onehot), mass, electronegativity, vdw-radius,
+# num-ring (float), and conjugated (edge) over the toymix baseline.
+datamodule:
+  args:
+    featurization:
+      atom_property_list_onehot: [atomic-number, group, period, total-valence, hybridization, chirality]
+      atom_property_list_float: [degree, formal-charge, radical-electron, aromatic, in-ring, mass, electronegativity, vdw-radius, num-ring]
+      edge_property_list: [bond-type-onehot, stereo, in-ring, conjugated]
+
+# ── Optimiser: high LR (search-validated, 5× default) ────────────────────────
+predictor:
+  optim_kwargs:
+    lr: 2.e-4

@@ -1,0 +1,30 @@
+# @package _global_
+# Linear-probe monitor callback for pre-training.
+#
+# Adds a Lightning callback that, on every validation epoch, extracts graph-level
+# embeddings from the live backbone for 5 representative ADMET tasks, fits a
+# 1-layer linear head via SGD on the TDC train_val split, and logs the metric
+# on the TDC test split. Values surface via `probe/{task}/{metric}` in W&B.
+#
+# Enable with: +probe=admet_linear
+# Recommended paired override (so the probe runs every pretrain epoch):
+#   ++trainer.trainer.check_val_every_n_epoch=1
+
+probe:
+  enabled: true
+  # Each task: name = TDC benchmark key, kind = regression|classification,
+  # metric = mae|spearman|auroc.
+  tasks:
+    - {name: caco2_wang,      kind: regression,     metric: mae}
+    - {name: pgp_broccatelli, kind: classification, metric: auroc}
+    - {name: cyp3a4_veith,    kind: classification, metric: auroc}
+    - {name: half_life_obach, kind: regression,     metric: spearman}
+    - {name: herg,            kind: classification, metric: auroc}
+  max_epochs: 50          # SGD epochs for the linear head per probe call
+  batch_size: 256         # batch size for embedding extraction + probe training
+  lr: 1.e-3
+  weight_decay: 1.e-5
+  embedding_level: graph  # task level whose graph_output_nn produces the embedding
+  every_n_val_epochs: 1   # 1 = run at every validation epoch
+  tdc_cache_dir: null     # null => graphium.utils.fs.get_cache_dir("tdc")/ADMET_Benchmark
+  probe_seed: 0           # seed for linear-head init + SGD shuffling (isolated)
