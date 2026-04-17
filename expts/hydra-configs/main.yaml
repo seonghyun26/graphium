@@ -11,6 +11,9 @@ defaults:
   # Benchmarking
   - model: gcn
 
+  # Downstream linear-probe monitor (disable with ++probe.enabled=false)
+  - probe: admet_linear
+
   # Specializations
   - training/accelerator: ${training}_${accelerator}
   - training/model: ${training}_${model}

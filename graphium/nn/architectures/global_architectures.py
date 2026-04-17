@@ -1349,6 +1349,9 @@ class FeedForwardGraph(FeedForwardNN):
         """
         class_str = f"{self.name}(depth={self.depth}, {self.residual_layer})\n    "
         layer_str = f"{self.layer_class.__name__}[{' -> '.join(map(str, self.full_dims))}]\n    "
+        pair_dim = self.layer_kwargs.get("pair_dim")
+        if pair_dim is not None:
+            layer_str += f"pair_dim={pair_dim}\n    "
 
         return class_str + layer_str
 

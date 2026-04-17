@@ -15,7 +15,7 @@ probe:
   # Each task: name = TDC benchmark key, kind = regression|classification,
   # metric = mae|spearman|auroc.
   tasks:
-    - {name: caco2_wang,      kind: regression,     metric: mae}
+    - {name: caco2_wang,      kind: regression,     metric: spearman}
     - {name: pgp_broccatelli, kind: classification, metric: auroc}
     - {name: cyp3a4_veith,    kind: classification, metric: auroc}
     - {name: half_life_obach, kind: regression,     metric: spearman}

@@ -19,8 +19,8 @@ from copy import deepcopy
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple
 
+import lightning.pytorch as pl
 import numpy as np
-import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 from loguru import logger
@@ -61,6 +61,8 @@ class ADMETLinearProbeCallback(pl.Callback):
         self._datasets: Optional[Dict[str, Dict[str, Any]]] = None
         self._collate_fn = None
         self._val_call_idx = 0
+        self._last_probed_epoch = -1
+        self._last_probe_time = 0.0
 
     # ------------------------------------------------------------------
     # Lightning hooks
@@ -125,10 +127,20 @@ class ADMETLinearProbeCallback(pl.Callback):
     ) -> None:
         if trainer.sanity_checking or self._datasets is None:
             return
-        # Only rank 0 runs the probe. Other ranks no-op; `rank_zero_only=True`
-        # on `pl_module.log` keeps logger writes consistent.
         if hasattr(trainer, "is_global_zero") and not trainer.is_global_zero:
             return
+        # Guard against duplicate calls within the same epoch. Lightning may
+        # fire on_validation_epoch_end more than once per validation pass and
+        # increment current_epoch between calls. Use both epoch tracking and a
+        # time-based debounce (probes take ~10s, epochs take minutes).
+        import time
+
+        current_epoch = trainer.current_epoch
+        now = time.monotonic()
+        if current_epoch == self._last_probed_epoch or (now - self._last_probe_time) < 60:
+            return
+        self._last_probed_epoch = current_epoch
+        self._last_probe_time = now
 
         self._val_call_idx += 1
         if self._val_call_idx % self.every_n_val_epochs != 0:
@@ -166,8 +178,9 @@ class ADMETLinearProbeCallback(pl.Callback):
                 except Exception as err:  # noqa: BLE001
                     logger.warning("ADMETLinearProbeCallback: probe/{} failed: {}", name, err)
                     continue
+                metric_key = f"probe/{name}/{ds['metric']}"
                 pl_module.log(
-                    f"probe/{name}/{ds['metric']}",
+                    metric_key,
                     float(metric_value),
                     on_epoch=True,
                     on_step=False,
@@ -175,6 +188,12 @@ class ADMETLinearProbeCallback(pl.Callback):
                     logger=True,
                     sync_dist=False,
                     rank_zero_only=True,
+                )
+                logger.info(
+                    "ADMETLinearProbeCallback: {}={:.4f} (epoch={})",
+                    metric_key,
+                    float(metric_value),
+                    trainer.current_epoch,
                 )
         finally:
             if was_training:
@@ -205,17 +224,20 @@ class ADMETLinearProbeCallback(pl.Callback):
         in_dim = z_train.shape[1]
         out_dim = 1  # both regression and binary classification use scalar logit
         head = nn.Linear(in_dim, out_dim).to(device)
-        _fit_linear_head(
-            head=head,
-            z=z_train,
-            y=y_train,
-            kind=kind,
-            max_epochs=self.max_epochs,
-            batch_size=self.batch_size,
-            lr=self.lr,
-            weight_decay=self.weight_decay,
-            device=device,
-        )
+        # Lightning's validation loop wraps callbacks in torch.no_grad(); the
+        # linear head needs grad enabled to backprop on its own parameters.
+        with torch.enable_grad():
+            _fit_linear_head(
+                head=head,
+                z=z_train,
+                y=y_train,
+                kind=kind,
+                max_epochs=self.max_epochs,
+                batch_size=self.batch_size,
+                lr=self.lr,
+                weight_decay=self.weight_decay,
+                device=device,
+            )
         return _score_linear_head(
             head=head,
             z=z_test,
@@ -246,8 +268,20 @@ class ADMETLinearProbeCallback(pl.Callback):
         )
         chunks: List[torch.Tensor] = []
         graph_output_nn = backbone.task_heads.graph_output_nn[self.embedding_level]
+        target_dtype = next(backbone.parameters()).dtype
         for batch in loader:
             batch = batch.to(device)
+            # Featurizer emits fp16 node/edge/PE features; the pretrain forward
+            # normally relies on Lightning's autocast to reconcile dtypes, but
+            # we run outside that context. Cast floating-point feature tensors
+            # to the backbone's param dtype so matmuls don't hit Half/Float
+            # mismatches. Integer tensors (edge_index, batch, labels idx) and
+            # empty datasets are left alone.
+            _keys = batch.keys() if callable(getattr(batch, "keys", None)) else list(batch.keys)
+            for _key in list(_keys):
+                _val = batch[_key]
+                if isinstance(_val, torch.Tensor) and _val.is_floating_point():
+                    batch[_key] = _val.to(target_dtype)
             g = backbone.encoder_manager(batch)
             if backbone.pre_nn is not None:
                 g["feat"] = backbone.pre_nn.forward(g["feat"])
