@@ -21,6 +21,7 @@ import httpx
 import numpy as np
 import pandas as pd
 import torch
+from minimol import Minimol  # import early: pyTDC's admet_group chdir's and breaks editable graphium imports
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import (
     average_precision_score,
@@ -126,7 +127,6 @@ def embed_smiles(smiles: List[str], cache_path: Path) -> np.ndarray:
     cache: Dict[str, torch.Tensor] = torch.load(cache_path, weights_only=False) if cache_path.exists() else {}
     missing = [s for s in smiles if s not in cache]
     if missing:
-        from minimol import Minimol
         print(f"  [minimol] embedding {len(missing)} / {len(smiles)} new SMILES...", flush=True)
         model = Minimol()
         # Minimol returns list of 512-dim tensors

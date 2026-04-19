@@ -1,0 +1,69 @@
+# @package _global_
+# TDC DTI downstream-eval task: MLP(GNN(molecule) || protein_embedding) -> label
+#
+# Single-task setup — used for *evaluating a pretrained molecule encoder* on the
+# TDC DTI benchmarks (DAVIS, KIBA, BindingDB_*) as a downstream task.
+#
+# Per-subset CSV columns: SMILES_nometa, label (pY for DAVIS/BindingDB, kiba_score for KIBA),
+# then prot_emb_0..prot_emb_1151. With label_cols=null and aux_label_split=1, the label
+# tensor is split inside the predictor: column 0 = real target, columns 1: = aux input
+# concatenated to graph features inside the task head.
+#
+# The data is already z-score normalized at prep time (see
+# scripts/data/dti_eval/01_prepare_dti_eval.py); label_normalization MUST stay disabled
+# (predictor enforces this when aux_label_splits is set).
+#
+# Hydra-driven knobs (set by scripts/00_finetune_dti.sh):
+#   ++constants.dti_subset=DAVIS|KIBA|BindingDB_Kd|BindingDB_Ki|BindingDB_IC50
+#   ++constants.dti_split_method=random|cold_target
+#   ++constants.dti_split_seed=0..4
+#   ++constants.dti_eval_dir=data/dti-eval         (CSV + splits/ live here)
+
+constants:
+  dti_subset: DAVIS
+  dti_split_method: random
+  dti_split_seed: 0
+  dti_eval_dir: data/dti-eval
+
+datamodule:
+  args:
+    task_specific_args:
+      dti_eval:
+        df_path: ${constants.dti_eval_dir}/${constants.dti_subset}.csv
+        smiles_col: "SMILES_nometa"
+        label_cols: null  # all non-SMILES cols: label + prot_emb_0..1151
+        splits_path: ${constants.dti_eval_dir}/splits/${constants.dti_subset}_${constants.dti_split_method}_seed${constants.dti_split_seed}.pt
+        task_level: graph
+
+architecture:
+  task_heads:
+    dti_eval:
+      task_level: graph
+      out_dim: 1
+      hidden_dims: 256
+      depth: 2
+      activation: relu
+      last_activation: none
+      aux_in_dim: 1152
+      aux_label_split: 1
+
+predictor:
+  aux_label_splits:
+    dti_eval: 1
+  loss_fun:
+    dti_eval: mae_ipu
+  metrics_on_progress_bar:
+    dti_eval: ['mae']
+  metrics_on_training_set:
+    dti_eval: ['mae']
+
+metrics:
+  dti_eval:
+  - name: mae
+    metric: mae_ipu
+  - name: mse
+    metric: mse_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu
+  - name: spearmanr
+    metric: spearmanr_ipu

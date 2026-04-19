@@ -16,6 +16,7 @@ predictor:
 
 trainer:
   seed: ${constants.seed}
+  upload_to_hf: hyunnnnnnnn
   model_checkpoint:
     filename: ${constants.name}
     save_last: True

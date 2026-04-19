@@ -47,6 +47,7 @@ architecture:
       opm_hidden: 32
       use_checkpoint: true
       compile_mode: pair_track
+      edge_injection: true          # MiniMol-style per-layer bond injection
 
   graph_output_nn:
     graph:

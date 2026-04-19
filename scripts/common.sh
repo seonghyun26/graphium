@@ -3,14 +3,15 @@
 # Source this file: source "$(dirname "$0")/common.sh"
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
+# Use BASH_SOURCE so sourcing from nested script directories resolves correctly.
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
 DEVICE=${DEVICE:-0}
 SEED=${SEED:-0}
 
 # ── Results directory (centralized CSV for notebook visualization) ────────────
-RESULTS_DIR=${RESULTS_DIR:-$(cd "$(dirname "$0")/.."; pwd)/results}
+RESULTS_DIR=${RESULTS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/results}
 
 # ── W&B ──────────────────────────────────────────────────────────────────────
 WANDB_ENTITY=${WANDB_ENTITY:-eddy26}

@@ -12,7 +12,9 @@ runs that don't set the probe config are byte-identical to previous behavior.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import pickle
 import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from copy import deepcopy
@@ -57,6 +59,7 @@ class ADMETLinearProbeCallback(pl.Callback):
         self.every_n_val_epochs = int(self.cfg.get("every_n_val_epochs", 1))
         self.tdc_cache_dir: Optional[str] = self.cfg.get("tdc_cache_dir") or None
         self.probe_seed = int(self.cfg.get("probe_seed", 0))
+        self.skip_epoch_zero = bool(self.cfg.get("skip_epoch_zero", True))
 
         self._datasets: Optional[Dict[str, Dict[str, Any]]] = None
         self._collate_fn = None
@@ -88,10 +91,17 @@ class ADMETLinearProbeCallback(pl.Callback):
             tdc_cache = fs.join(fs.get_cache_dir("tdc"), "ADMET_Benchmark")
         fs.mkdir(tdc_cache, exist_ok=True)
 
+        # Persistent feature cache keyed on featurizer config. Subsequent runs
+        # with the same smiles_transformer skip the ~1-min TDC featurization.
+        feat_hash = _featurizer_hash(smiles_transformer)
+        features_cache = fs.join(tdc_cache, "probe_features", feat_hash)
+        fs.mkdir(features_cache, exist_ok=True)
+
         logger.info(
-            "ADMETLinearProbeCallback: featurizing {} ADMET tasks (cache={})",
+            "ADMETLinearProbeCallback: featurizing {} ADMET tasks (cache={}, feat_cache={})",
             len(self.tasks),
             tdc_cache,
+            features_cache,
         )
         group = _load_admet_group(tdc_cache)
 
@@ -103,6 +113,7 @@ class ADMETLinearProbeCallback(pl.Callback):
                 name=name,
                 smiles_transformer=smiles_transformer,
                 kind=task_cfg["kind"],
+                features_cache=features_cache,
             )
             logger.info(
                 "  probe/{} — train={}  test={}  kind={}  metric={}",
@@ -136,6 +147,8 @@ class ADMETLinearProbeCallback(pl.Callback):
         import time
 
         current_epoch = trainer.current_epoch
+        if self.skip_epoch_zero and current_epoch == 0:
+            return
         now = time.monotonic()
         if current_epoch == self._last_probed_epoch or (now - self._last_probe_time) < 60:
             return
@@ -321,12 +334,46 @@ def _load_admet_group(cache_dir: str):
             return admet_group(path=cache_dir)
 
 
+def _featurizer_hash(smiles_transformer) -> str:
+    """Stable short hash of the featurizer partial's function + keywords.
+
+    Uses the underlying function's qualname and a sorted repr of bound
+    keywords. Avoids ``repr(partial)`` because that includes the function's
+    memory address, which changes every process.
+    """
+    fn = getattr(smiles_transformer, "func", smiles_transformer)
+    fn_key = f"{getattr(fn, '__module__', '')}.{getattr(fn, '__qualname__', repr(fn))}"
+    kwargs = getattr(smiles_transformer, "keywords", {}) or {}
+    kw_key = repr(sorted((str(k), repr(v)) for k, v in kwargs.items()))
+    key = (fn_key + "|" + kw_key).encode("utf-8")
+    return hashlib.sha256(key).hexdigest()[:16]
+
+
 def _load_and_featurize_task(
     group,
     name: str,
     smiles_transformer,
     kind: str,
+    features_cache: Optional[str] = None,
 ) -> Tuple[List[Any], torch.Tensor, List[Any], torch.Tensor]:
+    cache_path = None
+    if features_cache is not None:
+        cache_path = fs.join(features_cache, f"{name}.pkl")
+        if fs.exists(cache_path):
+            try:
+                with open(cache_path, "rb") as f:
+                    blob = pickle.load(f)
+                return (
+                    blob["train_graphs"],
+                    blob["train_y"],
+                    blob["test_graphs"],
+                    blob["test_y"],
+                )
+            except Exception as err:  # noqa: BLE001
+                logger.warning(
+                    "probe/{}: cache load failed ({}), re-featurizing.", name, err
+                )
+
     benchmark = group.get(name)
     # ``train_val`` is the union TDC recommends for fitting on the train split
     # when reporting a single test metric.
@@ -337,6 +384,23 @@ def _load_and_featurize_task(
     test_graphs, test_y = _featurize_split(test_df, smiles_transformer, kind)
     if len(train_graphs) == 0 or len(test_graphs) == 0:
         raise RuntimeError(f"probe/{name}: featurization produced empty split")
+
+    if cache_path is not None:
+        try:
+            with open(cache_path, "wb") as f:
+                pickle.dump(
+                    {
+                        "train_graphs": train_graphs,
+                        "train_y": train_y,
+                        "test_graphs": test_graphs,
+                        "test_y": test_y,
+                    },
+                    f,
+                    protocol=pickle.HIGHEST_PROTOCOL,
+                )
+        except Exception as err:  # noqa: BLE001
+            logger.warning("probe/{}: cache write failed ({}).", name, err)
+
     return train_graphs, train_y, test_graphs, test_y
 
 

@@ -209,3 +209,4 @@ autoresearch/
 *.zip
 *.omc
 *scheduled_tasks.lock
+.omx/

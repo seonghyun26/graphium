@@ -146,6 +146,11 @@ datamodule:
 constants:
   raise_train_error: false
 
+probe:
+  # ADMET benchmark runs are the downstream target themselves, so the
+  # extra ADMET linear-probe callback from main.yaml is redundant here.
+  enabled: false
+
 trainer:
   model_checkpoint:
     save_last: false

@@ -1,0 +1,37 @@
+# @package _global_
+# Top-level training defaults for the DTI downstream-eval flow.
+# Mirrors training/dti_pactivity.yaml but with a CosineAnnealingLR schedule
+# (consistent with how ADMET finetune runs are scheduled), shorter validation
+# cadence (every epoch — DAVIS/KIBA are small enough that this is cheap), and
+# scratch checkpoint paths under model_checkpoints/dti-eval/.
+
+predictor:
+  random_seed: ${constants.seed}
+  optim_kwargs:
+    lr: 1.e-4
+  torch_scheduler_kwargs:
+    module_type: CosineAnnealingLR
+    T_max: ${constants.max_epochs}
+    eta_min: 1.0e-6
+  scheduler_kwargs: null
+  target_nan_mask: null
+  multitask_handling: flatten
+
+probe:
+  enabled: false
+
+trainer:
+  seed: ${constants.seed}
+  logger:
+    save_dir: logs/dti_eval/
+    name: ${constants.name}
+    project: dti_eval_${constants.dti_subset}
+  model_checkpoint:
+    dirpath: models_checkpoints/dti-eval/${constants.dti_subset}/${constants.dti_split_method}/seed${constants.seed}/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: ${constants.name}
+    save_last: false
+  trainer:
+    precision: bf16-mixed
+    max_epochs: ${constants.max_epochs}
+    min_epochs: 1
+    check_val_every_n_epoch: 1

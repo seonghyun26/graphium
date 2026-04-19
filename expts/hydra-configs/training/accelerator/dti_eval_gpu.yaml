@@ -1,0 +1,26 @@
+# @package _global_
+# Accelerator overrides for DTI downstream eval on GPU.
+# Batch sizes are smaller than dti_pactivity pretraining because the head fans
+# in 1152-dim aux features per sample; bs=64 fits comfortably on a 96GB card
+# and is plenty for DAVIS (~28K) / KIBA (~120K).
+
+accelerator:
+  float32_matmul_precision: medium
+
+datamodule:
+  args:
+    batch_size_training: 64
+    batch_size_inference: 64
+    featurization_n_jobs: 4
+    num_workers: 4
+
+predictor:
+  optim_kwargs: {}
+  metrics_every_n_train_steps: 300
+  torch_scheduler_kwargs:
+    max_num_epochs: ${constants.max_epochs}
+
+trainer:
+  trainer:
+    accumulate_grad_batches: 1
+    max_epochs: ${constants.max_epochs}

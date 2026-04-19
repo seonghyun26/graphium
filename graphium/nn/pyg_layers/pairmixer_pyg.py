@@ -35,11 +35,12 @@ from graphium.nn.base_layers import MoELayer
 from graphium.ipu.to_dense_batch import to_dense_batch, to_sparse_batch
 from graphium.utils.decorators import classproperty
 
-from .pair_init import PairFeatureInitializer
+from .pair_init import PairFeatureInitializer, _build_dense_edge_feat
 from .pairformer_pyg import (
     Transition,
     TriangleMultiplicationIncoming,
     TriangleMultiplicationOutgoing,
+    _LinearNoMup,
     _get_dropout_mask,
 )
 
@@ -115,6 +116,8 @@ class PairMixerLayerPyg(BaseGraphModule):
         moe_num_experts: int = 0,
         moe_top_k: int = 2,
         moe_aux_loss_coeff: float = 0.01,
+        # ---- Per-layer edge injection (MiniMol-style) ----
+        edge_injection: bool = False,
         # Accept and ignore pairformer-specific kwargs for config compat
         num_heads: int = 8,
         pairwise_head_width: int = 32,
@@ -137,6 +140,14 @@ class PairMixerLayerPyg(BaseGraphModule):
         self.pair_dropout = pair_dropout
         self.use_checkpoint = use_checkpoint
         self.parallel_pair_ops = parallel_pair_ops
+
+        # ---- Per-layer edge injection ----
+        # Projects pre_nn_edges output into pair_dim and adds to z
+        # at every layer (not just init). Analogous to GINE's per-layer
+        # edge addition, adapted to the pair track.
+        self.edge_proj = None
+        if edge_injection and in_dim_edges is not None and in_dim_edges > 0:
+            self.edge_proj = _LinearNoMup(in_dim_edges, pair_dim, bias=False)
 
         # ---- Pair track: initial pair representation ----
         # Only the first layer builds ``z_0`` (subsequent layers reuse
@@ -215,6 +226,14 @@ class PairMixerLayerPyg(BaseGraphModule):
                 self.forward, mode="default", dynamic=True,
             )
 
+    def _inject_edges(self, batch: Batch, pair_mask: Tensor) -> Tensor:
+        """Project cached dense edge features into pair_dim and mask."""
+        if not hasattr(batch, "_edge_feat_dense") or batch._edge_feat_dense is None:
+            B, N = pair_mask.shape[:2]
+            batch._edge_feat_dense = _build_dense_edge_feat(batch, B, N)
+        proj = self.edge_proj(batch._edge_feat_dense)
+        return proj * pair_mask.unsqueeze(-1)
+
     def _pair_track_ops(self, z: Tensor, pair_mask: Tensor) -> Tensor:
         """Pair-track operations: triangle multiplication + transition only.
 
@@ -281,6 +300,10 @@ class PairMixerLayerPyg(BaseGraphModule):
             z = batch.pair_feat
             pair_mask = batch.pair_mask
 
+            # Per-layer edge injection (fast path)
+            if self.edge_proj is not None:
+                z = z + self._inject_edges(batch, pair_mask)
+
             if self.use_checkpoint and self.training:
                 z = _checkpoint(
                     self._pair_track_ops, z, pair_mask,
@@ -322,6 +345,10 @@ class PairMixerLayerPyg(BaseGraphModule):
                 "Only layer 0 has pair_init; pair_feat must be set by a "
                 "preceding layer."
             )
+
+        # Per-layer edge injection (slow path)
+        if self.edge_proj is not None:
+            z = z + self._inject_edges(batch, pair_mask)
 
         # ---- Pair track updates (optionally checkpointed) ----
         if self.use_checkpoint and self.training:

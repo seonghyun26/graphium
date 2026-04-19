@@ -26,5 +26,6 @@ probe:
   weight_decay: 1.e-5
   embedding_level: graph  # task level whose graph_output_nn produces the embedding
   every_n_val_epochs: 1   # 1 = run at every validation epoch
+  skip_epoch_zero: true   # skip epoch 0 (random backbone → noise)
   tdc_cache_dir: null     # null => graphium.utils.fs.get_cache_dir("tdc")/ADMET_Benchmark
   probe_seed: 0           # seed for linear-head init + SGD shuffling (isolated)

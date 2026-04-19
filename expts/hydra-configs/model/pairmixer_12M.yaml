@@ -1,22 +1,36 @@
 # @package _global_
-# PairMixer ~12M configuration
+# PairMixer 12M configuration — best from architecture search (2026-04-14–17).
 #
-# D_s=128, D_z=256, depth=6 → ~12M params
-#   pair-track backbone: 6 layers * 24 * D_z^2 ≈ 9.4M
-#   extras (pre_nn, pre_nn_edges, OPM, graph_output_nn, task heads) ≈ 2-3M
+# D_s=96, D_z=224, depth=8 → 11.74M params (with edge injection)
+#   gnn backbone:  10.14M (8 × PairMixerLayerPyg)
+#   pre_nn:         0.02M
+#   pre_nn_edges:   0.01M
+#   graph_output:   1.56M (incl. task heads)
 #
-# Trades depth for a wider pair representation vs pairmixer_10M (D_z=128, depth=18).
-# Node track stays narrow (D_s=128) since PairMixer's capacity lives in the pair track.
+# Key findings baked into this config:
+#   1. D_z width > depth at fixed budget (224 × 8 > 192 × 12 > 160 × 16)
+#   2. LR = 2e-4 (5× default) — biggest single lever for scratch ADMET
+#   3. Expanded RDKit features (+hybridization, chirality, electronegativity,
+#      vdw-radius, num-ring, mass, conjugated) — consistent gains, zero cost
+#   4. Per-layer edge injection (MiniMol-style) — projects pre_nn_edges output
+#      into pair_dim at every layer, not just init. Massive gains on
+#      classification tasks (bbb_martins +0.155 AUROC, cyp2d6 +0.349 AUPRC)
+#   5. D_s=96 suffices — PairMixer leaves s_backbone=s_init; wider D_s wastes budget
+#   6. OPM-only pair_init — structural priors (graph_distance, path_edge) are
+#      task-specific and don't beat OPM + edge_injection on the average
+#   7. virtual_node=logsum aids graph-level readout
+#   8. pair_pool=stats (6×D_z) + node max-pool provides rich graph features
+#
 # Reference: Ouyang-Zhang et al., arXiv:2510.18870
 
 architecture:
   pre_nn:
-    out_dim: 128
-    hidden_dims: 128
+    out_dim: 96
+    hidden_dims: 96
 
   pre_nn_edges:
-    out_dim: 12                  # Minimal edge embedding; pair init projects to pair_dim
-    hidden_dims: 12
+    out_dim: 64
+    hidden_dims: 64
     depth: 2
     activation: relu
     last_activation: none
@@ -26,30 +40,40 @@ architecture:
     residual_type: none
 
   gnn:
-    in_dim: 128
-    out_dim: 128
-    hidden_dims: 128
-    in_dim_edges: 12             # Must match pre_nn_edges.out_dim
-    depth: 16
-    residual_type: none           # PairMixer doesn't update node features (s_backbone=s_init);
-                                  # simple residual would double them every layer → bf16 overflow.
-    virtual_node: logsum          # Learnable global node (MiniMol-style); aids graph-level readout
+    in_dim: 96
+    out_dim: 96
+    hidden_dims: 96
+    in_dim_edges: 64             # Must match pre_nn_edges.out_dim
+    depth: 8
+    residual_type: none
+    virtual_node: logsum
     layer_type: 'pyg:pairmixer'
     layer_kwargs:
-      pair_dim: 192              # Wider pair representation (matches 20M) at moderate depth
+      pair_dim: 224
       pair_dropout: 0.25
       hidden_dim_scaling: 4.0
       opm_hidden: 32
-      # ---- Speed ----
-      # compile=pair_track + ckpt=false → ~2.6x fwd+bwd at depth=18.
-      # Set ckpt=true if OOM at your training batch size.
-      use_checkpoint: false
+      use_checkpoint: true
       compile_mode: pair_track
+      edge_injection: true       # Per-layer bond → pair projection (MiniMol-style)
 
   graph_output_nn:
     graph:
-      pair_dim: 192              # Pool pair_feat directly
+      pair_dim: 224              # Must match gnn.layer_kwargs.pair_dim
       pair_pool: stats           # graph-aware stats pooling (level_in_dim = 6*pair_dim)
-      node_pooling: [max]        # Also max-pool node embeddings; concat with pair-stats
+      node_pooling: [max]        # concat node max-pool onto pair-stats
       hidden_dims: 256
       out_dim: 512
+
+# ── Expanded featurization ────────────────────────────────────────────────────
+datamodule:
+  args:
+    featurization:
+      atom_property_list_onehot: [atomic-number, group, period, total-valence, hybridization, chirality]
+      atom_property_list_float: [degree, formal-charge, radical-electron, aromatic, in-ring, mass, electronegativity, vdw-radius, num-ring]
+      edge_property_list: [bond-type-onehot, stereo, in-ring, conjugated]
+
+# ── Optimiser ─────────────────────────────────────────────────────────────────
+predictor:
+  optim_kwargs:
+    lr: 2.e-4

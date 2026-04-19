@@ -19,7 +19,8 @@ architecture:
       hidden_dims: 64
       depth: 2
       activation: relu
-      last_activation: sigmoid
+      # ADMET classification losses use `bce_logits`, so this head must emit raw logits.
+      last_activation: none
       dropout: *dropout
       normalization: *normalization
       last_normalization: "none"

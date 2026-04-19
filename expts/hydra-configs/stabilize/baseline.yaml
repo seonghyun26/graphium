@@ -1,0 +1,3 @@
+# @package _global_
+# Baseline: no stabilization overrides.
+# Exists so +stabilize=baseline is a valid CLI flag (keeps the runner uniform).

@@ -57,6 +57,7 @@ PYG_LAYERS_DICT = {
     "pyg:mpnnplus": PygLayers.MPNNPlusPyg,
     "pyg:pairformer": PygLayers.PairformerLayerPyg,
     "pyg:pairmixer": PygLayers.PairMixerLayerPyg,
+    "pyg:pairmixerpp": PygLayers.PairMixerPPLayerPyg,
 }
 
 LAYERS_DICT = deepcopy(FC_LAYERS_DICT)

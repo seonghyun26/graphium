@@ -223,6 +223,7 @@ MODEL_REGISTRY = {
     ('pyg:pairformer', 256,  12): 'pairformer_17M',
     ('pyg:pairformer', 384,  16): 'pairformer_52M',
     ('pyg:pairformer', 384,  48): 'pairformer_boltz',
+    ('pyg:pairmixer',  96,   8): 'pairmixer_12M',
     ('pyg:pairmixer', 256,  18): 'pairmixer_10M',
     ('pyg:pairmixer', 256,  20): 'pairmixer_20M',
     ('pyg:pairmixer', 256,  24): 'pairmixer_40M',

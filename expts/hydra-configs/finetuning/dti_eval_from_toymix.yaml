@@ -1,0 +1,62 @@
+# @package _global_
+# Variant of finetuning/dti_eval.yaml for checkpoints pretrained on TOYMIX ONLY
+# (i.e. qm9 + tox21 + zinc; no `dti_pactivity` task head exists in the ckpt).
+#
+# We pick `zinc` as the source sub_module (any toymix head works — they're all
+# molecule-only), drop both layers, rebuild a fresh head with depth=2, and use
+# module_overrides to give the new head the 1152-d protein aux input that the
+# zinc head doesn't have.
+
+constants:
+  name: dti_eval_${constants.dti_subset}_${constants.dti_split_method}_seed${constants.seed}
+  task: dti_eval
+  wandb:
+    name: ${constants.name}
+    project: dti_eval_${constants.dti_subset}
+    entity: multitask-gnn
+  seed: 42
+  max_epochs: 100
+  raise_train_error: false
+
+predictor:
+  optim_kwargs:
+    lr: 1.e-4
+  torch_scheduler_kwargs:
+    module_type: CosineAnnealingLR
+    T_max: ${constants.max_epochs}
+    eta_min: 1.0e-6
+
+datamodule:
+  args:
+    num_workers: 4
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    save_last: false
+
+finetuning:
+  task: dti_eval
+  level: graph
+  pretrained_model: dummy-pretrained-model
+  finetuning_module: task_heads
+  sub_module_from_pretrained: zinc          # <-- toymix head; no dti_pactivity in ckpt
+  new_sub_module: dti_eval
+  drop_depth: 2
+  added_depth: 2
+  new_out_dim: 256
+  unfreeze_pretrained_depth: 0
+  epoch_unfreeze_all: none
+  module_overrides:
+    aux_in_dim: 1152
+    aux_label_split: 1
+  finetuning_head:
+    task: dti_eval
+    previous_module: task_heads
+    incoming_level: graph
+    model_type: mlp
+    in_dim: 256
+    out_dim: 1
+    hidden_dims: 256
+    depth: 2
+    last_layer_is_readout: true

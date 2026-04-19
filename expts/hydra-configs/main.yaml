@@ -3,6 +3,9 @@ defaults:
   # Accelerators
   - accelerator: cpu
 
+  # Downstream linear-probe monitor (task configs can disable with probe.enabled=false)
+  - probe: admet_linear
+
   # Pre-training/fine-tuning
   - architecture: toymix
   - tasks: toymix
@@ -10,9 +13,6 @@ defaults:
 
   # Benchmarking
   - model: gcn
-
-  # Downstream linear-probe monitor (disable with ++probe.enabled=false)
-  - probe: admet_linear
 
   # Specializations
   - training/accelerator: ${training}_${accelerator}

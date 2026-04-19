@@ -57,7 +57,7 @@ case "${MODEL}" in
     pairformer_17M|pairformer_52M)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
-    pairmixer_auto|pairmixer_10M|pairmixer_20M|pairmixer_40M|pairmixer_boltz)
+    pairmixer_auto|pairmixer_12M|pairmixer_10M|pairmixer_20M|pairmixer_40M|pairmixer_boltz)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
     *)
