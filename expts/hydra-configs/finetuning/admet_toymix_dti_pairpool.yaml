@@ -1,0 +1,90 @@
+# @package _global_
+#
+# ADMET fine-tune from a toymix+DTI+ESMCv2 pairmixer with multi-layer pair
+# pooling. Finetune-from boundary is graph_output_nn (not task_heads) because
+# pair_layers_to_pool=[L_mid, L_final] doubles the graph head in_dim
+# (pair_pool=stats: 6 * pair_dim → (6 * pair_dim) * n_pair_layers), so the
+# pretrained graph_output_nn weights cannot be layer-swapped in. The pairmixer
+# GNN backbone still loads from the checkpoint; only graph_output_nn + the
+# task head train fresh.
+#
+# Backbone stays frozen (epoch_unfreeze_all: none) — the point of this variant
+# is to check whether a richer readout beats unfreeze-all-at-50 for overfit.
+
+defaults:
+  - override /tasks/loss_metrics_datamodule: admet
+
+constants:
+  task: lipophilicity_astrazeneca
+  name: finetuning_${constants.task}_toymix_dti_pairpool
+  wandb:
+    name: ${constants.name}
+    project: ${constants.task}
+    entity: multitask-gnn
+  seed: 42
+  max_epochs: 100
+  data_dir: expts/data/admet/${constants.task}
+  raise_train_error: false
+  datacache_path: /home/shpark/prj-molrepr/datacache/admet/${constants.task}
+
+predictor:
+  optim_kwargs:
+    lr: 1.e-4
+  torch_scheduler_kwargs:
+    module_type: CosineAnnealingLR
+    T_max: ${constants.max_epochs}
+    eta_min: 1.0e-6
+
+datamodule:
+  args:
+    num_workers: 0
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    save_last: false
+
+finetuning:
+  task: ${constants.task}
+  level: graph
+  pretrained_model: dummy-pretrained-model
+  finetuning_module: graph_output_nn
+  sub_module_from_pretrained: graph
+  new_sub_module: graph
+
+  # Multi-layer pair pooling: indices are GNN layer positions.
+  # pairmixer_12M has depth=8 → valid 0..7. [3, 7] = mid + final.
+  module_overrides:
+    pair_layers_to_pool: [3, 7]
+
+  # graph_output_nn depth=2 in the pretrained config (hidden_dims=256 scalar).
+  # added_depth=2 + drop_depth=2 keeps net depth=2, and makes
+  # overwrite_with_pretrained's shared_depth=0 → graph_output_nn trains fresh.
+  # (The input Linear can't be layer-swapped because in_dim doubled.)
+  new_out_dim: 512
+  added_depth: 2
+  drop_depth: 2
+
+  # Keep task_heads alive (would otherwise be nulled as an after-finetuning
+  # module). Rebuild task_heads.{task} from the pretrained task_heads.dti
+  # template; overridden by 00_finetune_admet.sh's flags into a 256→256→256 MLP.
+  keep_modules_after_finetuning_module:
+    task_heads-dti:
+      new_sub_module: ${constants.task}
+      hidden_dims: 256
+      depth: 2
+      out_dim: 256
+
+  unfreeze_pretrained_depth: 0
+  epoch_unfreeze_all: none
+
+  finetuning_head:
+    task: ${constants.task}
+    previous_module: task_heads
+    incoming_level: graph
+    model_type: mlp
+    in_dim: 256
+    out_dim: 1
+    hidden_dims: 256
+    depth: 4
+    last_layer_is_readout: true

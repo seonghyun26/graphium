@@ -732,7 +732,7 @@ class PredictorModule(lightning.LightningModule):
         else:
             epoch_time = time.time() - self.epoch_start_time
             self.epoch_start_time = None
-            self.log("epoch_time", torch.tensor(epoch_time), sync_dist=True)
+            self.log("epoch_time", torch.tensor(epoch_time, device=self.device), sync_dist=True)
 
     def on_validation_epoch_start(self) -> None:
         self.mean_val_time_tracker.reset()
@@ -762,6 +762,13 @@ class PredictorModule(lightning.LightningModule):
         concatenated_metrics_logs["val/mean_time"] = torch.tensor(self.mean_val_time_tracker.mean_value)
         concatenated_metrics_logs["val/mean_tput"] = self.mean_val_tput_tracker.mean_value
         self._log_primary_score(concatenated_metrics_logs, "val")
+        # DDP sync_dist=True uses NCCL AVG, which requires CUDA tensors. Metrics
+        # were computed on CPU (see _general_epoch_end) — move scalars to the
+        # module's device so the all-reduce runs on NCCL, not Gloo (which lacks AVG).
+        concatenated_metrics_logs = {
+            k: v.to(self.device) if torch.is_tensor(v) else v
+            for k, v in concatenated_metrics_logs.items()
+        }
         self.log_dict(concatenated_metrics_logs, sync_dist=True)
 
         # Save yaml file with the per-task metrics summaries
@@ -777,6 +784,10 @@ class PredictorModule(lightning.LightningModule):
         concatenated_metrics_logs = self.task_epoch_summary.concatenate_metrics_logs(metrics_logs)
         self._log_primary_score(concatenated_metrics_logs, "test")
 
+        concatenated_metrics_logs = {
+            k: v.to(self.device) if torch.is_tensor(v) else v
+            for k, v in concatenated_metrics_logs.items()
+        }
         self.log_dict(concatenated_metrics_logs, sync_dist=True)
 
         # Save yaml file with the per-task metrics summaries

@@ -437,6 +437,27 @@ def load_trainer(
     if accelerator_type == "ipu":
         cfg_trainer["trainer"].pop("accumulate_grad_batches", None)
 
+    # Multi-GPU DDP: instantiate DDPStrategy with a mixed process-group backend so
+    # metrics that predictor._general_epoch_end moves to CPU can still be
+    # all-reduced (via gloo) while gradients stay on NCCL. Default "nccl"-only
+    # init raises "No backend type associated with device type cpu" during
+    # log_dict(..., sync_dist=True).
+    if accelerator_type == "gpu" and isinstance(strategy, str):
+        try:
+            _n_dev = int(devices)
+        except (TypeError, ValueError):
+            _n_dev = None
+        _uses_ddp = strategy.startswith("ddp") or (
+            strategy == "auto" and (_n_dev is None or _n_dev > 1)
+        )
+        if _uses_ddp:
+            from lightning.pytorch.strategies import DDPStrategy
+
+            strategy = DDPStrategy(
+                find_unused_parameters="find_unused_parameters_true" in strategy,
+                process_group_backend="cuda:nccl,cpu:gloo",
+            )
+
     # Define the early stopping parameters
     trainer_kwargs = {}
     callbacks = []
