@@ -459,6 +459,13 @@ def load_trainer(
 
         callbacks.append(ADMETLinearProbeCallback(probe_cfg))
 
+    # Optional end-to-end fine-tune monitor (enabled via `+ft_monitor=admet_mlp`).
+    ft_monitor_cfg = config.get("ft_monitor") if hasattr(config, "get") else None
+    if ft_monitor_cfg is not None and ft_monitor_cfg.get("enabled", False):
+        from graphium.finetuning.admet_finetune import ADMETFinetuneCallback
+
+        callbacks.append(ADMETFinetuneCallback(ft_monitor_cfg))
+
     # Define the logger parameters
     wandb_cfg = config["constants"].get("wandb")
     if wandb_cfg is not None:

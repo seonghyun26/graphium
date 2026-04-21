@@ -216,8 +216,10 @@ def main():
         print("\n  All proteins already have embeddings. Nothing to do.")
         return
 
-    # Validate SMILES (optional data quality step from original pipeline)
-    validate_smiles(df["Drug"].unique().tolist())
+    # Optional SMILES sanity check — only runs when the CSV is a TDC-style
+    # drug+target table. The GRAM-DTI protein collector emits protein-only CSVs.
+    if "Drug" in df.columns:
+        validate_smiles(df["Drug"].unique().tolist())
 
     # Process proteins in batches across GPUs
     gpu_manager = GPUManager(gpu_ids)

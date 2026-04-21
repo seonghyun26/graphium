@@ -18,12 +18,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 eval "$(conda shell.bash hook)"
-conda activate graphium
+conda activate graphium-downstream 2>/dev/null || conda activate graphium
 
 DTIAM_ROOT=${1:?"Usage: $0 <DTIAM_clone> [gpu_ids]"}
 GPUS=${2:-0}
 
-OUT_DIR="data/downstream/gram_dti"
+OUT_DIR="../data/downstream/gram_dti"
 PROTEIN_CSV="${OUT_DIR}/dtiam-proteins.csv"
 ESM2_OUT="${OUT_DIR}/protein-esm2"
 PROTEIN_PARQUET="${OUT_DIR}/protein-esm2.parquet"

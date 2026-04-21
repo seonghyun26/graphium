@@ -1,7 +1,0 @@
-# @package _global_
-# GPU accelerator settings for toymix + LPM-24 (Galactica).
-# Mirrors training/accelerator/toymix_lpm24_gpu.yaml.
-
-defaults:
-  - toymix_lpm24_gpu
-  - _self_

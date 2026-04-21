@@ -1,0 +1,36 @@
+# @package _global_
+# Fine-tune monitor callback for pre-training.
+#
+# Complement to probe/admet_linear: runs a brief end-to-end fine-tune
+# (backbone + small MLP head) on the same 5 ADMET tasks every validation
+# epoch so you can compare linear-probe vs. fine-tune curves. Values
+# surface via `finetune/{task}/{metric}` in W&B.
+#
+# Fine-tune is MUCH slower than the linear probe (~minutes vs ~10s per
+# task). Consider `every_n_val_epochs>=5` on long runs, and a later
+# `skip_epoch_zero` cadence than the probe.
+#
+# Enable with: +ft_monitor=admet_mlp
+# Paired with the default probe group this logs both probe/* and finetune/*.
+
+ft_monitor:
+  enabled: true
+  tasks:
+    - {name: caco2_wang,      kind: regression,     metric: spearman}
+    - {name: pgp_broccatelli, kind: classification, metric: auroc}
+    - {name: cyp3a4_veith,    kind: classification, metric: auroc}
+    - {name: half_life_obach, kind: regression,     metric: spearman}
+    - {name: herg,            kind: classification, metric: auroc}
+  max_epochs: 20            # fine-tune epochs per task per callback call
+  batch_size: 64
+  lr_backbone: 1.e-4        # smaller than pretrain LR to avoid wrecking the backbone
+  lr_head: 1.e-3
+  weight_decay: 0.0
+  hidden_dim: 256
+  depth: 2                  # depth=1 -> linear head (matches linear-probe architecture)
+  dropout: 0.0
+  embedding_level: graph
+  every_n_val_epochs: 1     # 1 = run at every validation epoch (expensive!)
+  skip_epoch_zero: true
+  tdc_cache_dir: null       # null => graphium.utils.fs.get_cache_dir("tdc")/ADMET_Benchmark
+  finetune_seed: 0

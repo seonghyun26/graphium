@@ -17,7 +17,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 eval "$(conda shell.bash hook)"
-conda activate graphium
+conda activate graphium-downstream 2>/dev/null || conda activate graphium
 
 GPUS=${1:-0}
 SUBSETS=${SUBSETS:-"DAVIS KIBA"}
@@ -25,7 +25,7 @@ METHODS=${METHODS:-"random cold_target"}
 SEEDS=${SEEDS:-"0 1 2 3 4"}
 DG_SUBSETS=${DG_SUBSETS:-""}
 
-OUT_DIR="data/downstream/tdc_dti_regression"
+OUT_DIR="../data/downstream/tdc_dti_regression"
 PROTEIN_CSV="${OUT_DIR}/protein-drug.csv"
 ESM2_OUT="${OUT_DIR}/protein-esm2"
 PROTEIN_PARQUET="${OUT_DIR}/protein-esm2.parquet"

@@ -69,9 +69,13 @@ def _train_sklearn(
 ) -> Pipeline:
     if head_type == "linear":
         if task == "classification":
+            # n_jobs=-1 spawns a multiprocess pool that pegs every core on top
+            # of BLAS threading, which easily takes load average > 300 on
+            # high-core hosts. Default (None=1) is plenty for LBFGS on a few
+            # thousand samples; env-level OMP caps control the BLAS layer.
             estimator = LogisticRegression(
                 C=1.0, max_iter=2000, class_weight="balanced",
-                random_state=random_state, n_jobs=-1,
+                random_state=random_state,
             )
         else:
             estimator = Ridge(alpha=1.0, random_state=random_state)

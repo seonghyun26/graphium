@@ -50,6 +50,14 @@ class MoleculeEncoder(abc.ABC):
             torch.load(cache_path, weights_only=False) if cache_path.exists() else {}
         )
 
+        # Lazy encoders (PairMixer, CPCNN) don't set ``out_dim`` until their
+        # first ``extract()`` call. On a pure cache-hit run ``extract`` never
+        # fires, so infer the dim from a cached feature instead.
+        if self.out_dim <= 0 and cache:
+            sample = next((v for v in cache.values() if v is not None), None)
+            if sample is not None:
+                self.out_dim = int(np.asarray(sample).shape[0])
+
         missing = [s for s in dict.fromkeys(smiles) if s not in cache]
         if missing:
             print(

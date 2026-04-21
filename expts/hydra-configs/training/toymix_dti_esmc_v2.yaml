@@ -3,11 +3,11 @@
 predictor:
   random_seed: ${constants.seed}
   optim_kwargs:
-    lr: 4.e-5
+    lr: 3.e-4
   torch_scheduler_kwargs:
     module_type: WarmUpLinearLR
     max_num_epochs: ${constants.max_epochs}
-    warmup_epochs: 10
+    warmup_epochs: 5
     verbose: False
   scheduler_kwargs: null
   target_nan_mask: null

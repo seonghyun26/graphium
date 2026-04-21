@@ -30,8 +30,8 @@ if [[ "${PAIRMIXER_CKPT}" != "_" ]]; then
     ENCODERS="pairmixer,${ENCODERS}"
 fi
 
-if [[ ! -f "data/downstream/bioactivity/cell_bioactivity.csv" ]]; then
-    echo "ERROR: data/downstream/bioactivity/cell_bioactivity.csv missing."
+if [[ ! -f "../data/downstream/bioactivity/cell_bioactivity.csv" ]]; then
+    echo "ERROR: ../data/downstream/bioactivity/cell_bioactivity.csv missing."
     echo "       Run: bash scripts/bioactivity/prepare_data.sh <chembl_33.db>"
     exit 1
 fi

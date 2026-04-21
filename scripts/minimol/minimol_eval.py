@@ -8,7 +8,40 @@ Usage:
 Writes results to results/minimol_results.csv (one row per (benchmark, task, seed, head)).
 Caches per-SMILES embeddings at datacache/minimol_embeddings/{benchmark}_{task}.pt so
 subsequent seeds reuse them.
+
+CPU usage: sklearn MLP / LogReg and CPU-side torch default to one BLAS thread
+per physical core, which on high-core hosts pushes load averages > 300 and
+starves any concurrent GPU run of its dataloader cores. Cap with
+``--cpu-threads N`` (or ``MINIMOL_CPU_THREADS=N``); default is 8.
 """
+
+# ---- CPU thread caps (must come before numpy / sklearn / torch / minimol import) ----
+import os
+import sys as _sys
+
+
+def _cap_cpu_threads() -> int:
+    # CLI flag wins over env. Peek sys.argv early since argparse hasn't run.
+    n = int(os.environ.get("MINIMOL_CPU_THREADS", "8"))
+    argv = _sys.argv
+    for i, tok in enumerate(argv):
+        if tok == "--cpu-threads" and i + 1 < len(argv):
+            n = int(argv[i + 1])
+            break
+        if tok.startswith("--cpu-threads="):
+            n = int(tok.split("=", 1)[1])
+            break
+    for var in (
+        "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
+    ):
+        os.environ.setdefault(var, str(n))
+    return n
+
+
+_CPU_THREADS = _cap_cpu_threads()
+
+# ---- standard imports ----
 import argparse
 import csv
 import json
@@ -21,6 +54,15 @@ import httpx
 import numpy as np
 import pandas as pd
 import torch
+
+# Belt-and-suspenders: cap torch's internal pools too (env vars don't always
+# stick for libs that cache thread counts at import time).
+try:
+    torch.set_num_threads(_CPU_THREADS)
+    torch.set_num_interop_threads(max(1, _CPU_THREADS // 2))
+except RuntimeError:
+    pass  # torch refuses to set interop threads twice; ignore on reload
+
 from minimol import Minimol  # import early: pyTDC's admet_group chdir's and breaks editable graphium imports
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import (
@@ -210,6 +252,11 @@ def main():
     parser.add_argument("--task", required=True)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--head", choices=["linear", "mlp"], default="mlp")
+    parser.add_argument(
+        "--cpu-threads", type=int, default=_CPU_THREADS,
+        help=f"BLAS/OpenMP thread cap (already applied; default {_CPU_THREADS}, "
+             "override with --cpu-threads N or MINIMOL_CPU_THREADS=N).",
+    )
     args = parser.parse_args()
 
     t0 = time.time()

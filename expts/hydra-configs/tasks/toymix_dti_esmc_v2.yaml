@@ -12,6 +12,9 @@ datamodule:
         split_test: 0.1
         seed: 0
         task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
       qm9:
         df: null
         df_path: ${constants.data_dir}/qm9.csv

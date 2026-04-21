@@ -25,6 +25,6 @@ ESM2_DIM: int = 1280
 PROT_EMB_COLS: list[str] = [f"prot_emb_{i}" for i in range(ESM2_DIM)]
 
 # Default on-disk locations (relative to repo root).
-DEFAULT_DATA_DIR = "data/downstream/tdc_dti_regression"
+DEFAULT_DATA_DIR = "../data/downstream/tdc_dti_regression"
 DEFAULT_RESULTS_CSV = "results/downstream/tdc_dti_regression.csv"
 DEFAULT_MOL_CACHE_DIR = "datacache/downstream/tdc_dti_regression"

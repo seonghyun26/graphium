@@ -46,10 +46,24 @@ echo "== installing autogluon.tabular =="
 pip install "autogluon.tabular[all]"
 
 echo "== installing core downstream deps =="
-pip install scikit-learn pandas numpy scipy tqdm pyarrow joblib PyTDC rdkit
+# `setuptools<81` keeps the bundled `pkg_resources` module that minimol still imports.
+# `swifter` is required by this graphium fork's data/multilevel_utils but isn't a
+# dep of PyPI graphium 2.4.7, so the editable install (--no-deps) won't pull it in.
+pip install scikit-learn pandas numpy scipy tqdm pyarrow joblib PyTDC rdkit \
+    'setuptools<81' swifter
+
+echo "== installing PyG companion wheels (torch-scatter/sparse/cluster) =="
+# Pre-built binaries from PyG's wheel index — avoids torch-sparse's source build,
+# which fails because pip's isolated build env has no torch (ModuleNotFoundError).
+TORCH_TAG=$(python -c "import torch, re; v=torch.__version__.split('+')[0]; cu=(torch.version.cuda or '').replace('.',''); print(f'torch-{v}+cu{cu}' if cu else f'torch-{v}+cpu')")
+echo "   resolved tag: ${TORCH_TAG}"
+pip install --no-build-isolation torch-scatter torch-sparse torch-cluster \
+    -f "https://data.pyg.org/whl/${TORCH_TAG}.html" \
+    || echo "  WARN: PyG wheels not found for ${TORCH_TAG}; minimol install will likely fail."
 
 echo "== installing minimol (MiniMol encoder) =="
-pip install minimol || echo "  WARN: minimol install failed; --encoder minimol will be unavailable."
+pip install --no-build-isolation minimol \
+    || echo "  WARN: minimol install failed; --encoder minimol will be unavailable."
 
 echo "== installing graphium (editable, no deps) =="
 pip install --no-deps -e "${REPO_ROOT}"

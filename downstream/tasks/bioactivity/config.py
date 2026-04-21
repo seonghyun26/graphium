@@ -18,6 +18,6 @@ N_ASSAYS: int = len(EXPECTED_ASSAY_IDS)
 N_FOLDS: int = 6
 
 # Default on-disk locations (relative to repo root).
-DEFAULT_DATA_DIR = "data/downstream/bioactivity"
+DEFAULT_DATA_DIR = "../data/downstream/bioactivity"
 DEFAULT_RESULTS_CSV = "results/downstream/bioactivity.csv"
 DEFAULT_MOL_CACHE_DIR = "datacache/downstream/bioactivity"

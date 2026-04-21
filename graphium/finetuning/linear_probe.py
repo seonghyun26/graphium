@@ -12,28 +12,26 @@ runs that don't set the probe config are byte-identical to previous behavior.
 
 from __future__ import annotations
 
-import hashlib
-import os
-import pickle
-import tempfile
-from contextlib import redirect_stderr, redirect_stdout
-from copy import deepcopy
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import lightning.pytorch as pl
-import numpy as np
 import torch
 import torch.nn as nn
 from loguru import logger
 from torch.utils.data import DataLoader
 
 from graphium.data.collate import graphium_collate_fn
+from graphium.finetuning.admet_common import (
+    ALLOWED_KINDS as _ALLOWED_KINDS,
+    ALLOWED_METRICS as _ALLOWED_METRICS,
+    featurizer_hash as _featurizer_hash,
+    forward_graph_embedding_batch,
+    load_admet_group as _load_admet_group,
+    load_and_featurize_task as _load_and_featurize_task,
+    score_predictions,
+)
 from graphium.utils import fs
-
-
-_ALLOWED_KINDS = {"regression", "classification"}
-_ALLOWED_METRICS = {"mae", "spearman", "auroc"}
 
 
 class ADMETLinearProbeCallback(pl.Callback):
@@ -267,11 +265,7 @@ class ADMETLinearProbeCallback(pl.Callback):
         graphs: List[Any],
         device: torch.device,
     ) -> torch.Tensor:
-        """Forward-pass graphs through pre_nn + gnn + graph_output_nn[level].
-
-        Replicates :meth:`FullGraphMultiTaskNetwork.forward` except for the
-        final ``task_heads`` call so we get the pre-task-head graph embedding.
-        """
+        """Forward-pass graphs through pre_nn + gnn + graph_output_nn[level]."""
         loader = DataLoader(
             graphs,
             batch_size=self.batch_size,
@@ -279,152 +273,20 @@ class ADMETLinearProbeCallback(pl.Callback):
             collate_fn=self._collate_fn,
             num_workers=0,
         )
-        chunks: List[torch.Tensor] = []
-        graph_output_nn = backbone.task_heads.graph_output_nn[self.embedding_level]
         target_dtype = next(backbone.parameters()).dtype
+        chunks: List[torch.Tensor] = []
         for batch in loader:
             batch = batch.to(device)
-            # Featurizer emits fp16 node/edge/PE features; the pretrain forward
-            # normally relies on Lightning's autocast to reconcile dtypes, but
-            # we run outside that context. Cast floating-point feature tensors
-            # to the backbone's param dtype so matmuls don't hit Half/Float
-            # mismatches. Integer tensors (edge_index, batch, labels idx) and
-            # empty datasets are left alone.
-            _keys = batch.keys() if callable(getattr(batch, "keys", None)) else list(batch.keys)
-            for _key in list(_keys):
-                _val = batch[_key]
-                if isinstance(_val, torch.Tensor) and _val.is_floating_point():
-                    batch[_key] = _val.to(target_dtype)
-            g = backbone.encoder_manager(batch)
-            if backbone.pre_nn is not None:
-                g["feat"] = backbone.pre_nn.forward(g["feat"])
-            if backbone.pre_nn_edges is not None:
-                e = g["edge_feat"]
-                if torch.prod(torch.as_tensor(e.shape[:-1])) == 0:
-                    e = torch.zeros(
-                        list(e.shape[:-1]) + [backbone.pre_nn_edges.out_dim],
-                        device=e.device,
-                        dtype=e.dtype,
-                    )
-                else:
-                    e = backbone.pre_nn_edges.forward(e)
-                g["edge_feat"] = e
-            g = backbone.gnn.forward(g)
-            if backbone.gnn_layer_pooling is not None:
-                g["feat"] = backbone.gnn_layer_pooling(backbone.gnn._readout_cache)
-            z = graph_output_nn(g)
+            z = forward_graph_embedding_batch(
+                backbone, batch, self.embedding_level, target_dtype
+            )
             chunks.append(z.detach().float().cpu())
         return torch.cat(chunks, dim=0)
 
 
 # ----------------------------------------------------------------------
-# Helpers
+# Helpers (linear-head training lives here since it's probe-specific)
 # ----------------------------------------------------------------------
-
-def _load_admet_group(cache_dir: str):
-    try:
-        from tdc.benchmark_group import admet_group
-    except ImportError as err:  # pragma: no cover
-        raise RuntimeError(
-            "ADMETLinearProbeCallback requires PyTDC. Install with `pip install PyTDC`."
-        ) from err
-    # TDC prints aggressively; mute stdout/stderr (same pattern as datamodule).
-    with tempfile.TemporaryFile("w") as f:
-        with redirect_stderr(f), redirect_stdout(f):
-            return admet_group(path=cache_dir)
-
-
-def _featurizer_hash(smiles_transformer) -> str:
-    """Stable short hash of the featurizer partial's function + keywords.
-
-    Uses the underlying function's qualname and a sorted repr of bound
-    keywords. Avoids ``repr(partial)`` because that includes the function's
-    memory address, which changes every process.
-    """
-    fn = getattr(smiles_transformer, "func", smiles_transformer)
-    fn_key = f"{getattr(fn, '__module__', '')}.{getattr(fn, '__qualname__', repr(fn))}"
-    kwargs = getattr(smiles_transformer, "keywords", {}) or {}
-    kw_key = repr(sorted((str(k), repr(v)) for k, v in kwargs.items()))
-    key = (fn_key + "|" + kw_key).encode("utf-8")
-    return hashlib.sha256(key).hexdigest()[:16]
-
-
-def _load_and_featurize_task(
-    group,
-    name: str,
-    smiles_transformer,
-    kind: str,
-    features_cache: Optional[str] = None,
-) -> Tuple[List[Any], torch.Tensor, List[Any], torch.Tensor]:
-    cache_path = None
-    if features_cache is not None:
-        cache_path = fs.join(features_cache, f"{name}.pkl")
-        if fs.exists(cache_path):
-            try:
-                with open(cache_path, "rb") as f:
-                    blob = pickle.load(f)
-                return (
-                    blob["train_graphs"],
-                    blob["train_y"],
-                    blob["test_graphs"],
-                    blob["test_y"],
-                )
-            except Exception as err:  # noqa: BLE001
-                logger.warning(
-                    "probe/{}: cache load failed ({}), re-featurizing.", name, err
-                )
-
-    benchmark = group.get(name)
-    # ``train_val`` is the union TDC recommends for fitting on the train split
-    # when reporting a single test metric.
-    train_df = benchmark["train_val"] if "train_val" in benchmark else benchmark["train"]
-    test_df = benchmark["test"]
-
-    train_graphs, train_y = _featurize_split(train_df, smiles_transformer, kind)
-    test_graphs, test_y = _featurize_split(test_df, smiles_transformer, kind)
-    if len(train_graphs) == 0 or len(test_graphs) == 0:
-        raise RuntimeError(f"probe/{name}: featurization produced empty split")
-
-    if cache_path is not None:
-        try:
-            with open(cache_path, "wb") as f:
-                pickle.dump(
-                    {
-                        "train_graphs": train_graphs,
-                        "train_y": train_y,
-                        "test_graphs": test_graphs,
-                        "test_y": test_y,
-                    },
-                    f,
-                    protocol=pickle.HIGHEST_PROTOCOL,
-                )
-        except Exception as err:  # noqa: BLE001
-            logger.warning("probe/{}: cache write failed ({}).", name, err)
-
-    return train_graphs, train_y, test_graphs, test_y
-
-
-def _featurize_split(df, smiles_transformer, kind: str) -> Tuple[List[Any], torch.Tensor]:
-    graphs: List[Any] = []
-    labels: List[float] = []
-    for smiles, y in zip(df["Drug"].tolist(), df["Y"].tolist()):
-        try:
-            g = smiles_transformer(smiles, mask_nan=0.0)
-        except Exception:  # noqa: BLE001
-            continue
-        if not isinstance(g, (tuple, list)) and g is None:
-            continue
-        # Featurizer can return a string on error (on_error="ignore" path).
-        if isinstance(g, str):
-            continue
-        graphs.append(g)
-        labels.append(float(y))
-    y_tensor = torch.tensor(labels, dtype=torch.float32)
-    if kind == "classification":
-        # Binary labels assumed (TDC binary ADMET tasks).
-        y_tensor = y_tensor.clamp(min=0.0, max=1.0)
-    return graphs, y_tensor
-
 
 def _fit_linear_head(
     head: nn.Linear,
@@ -473,43 +335,4 @@ def _score_linear_head(
         for i in range(0, z.shape[0], batch_size):
             preds.append(head(z[i : i + batch_size]).squeeze(-1).detach().cpu())
     pred = torch.cat(preds, dim=0)
-    y_cpu = y.detach().cpu().float().view(-1)
-
-    if metric == "mae":
-        return float(torch.mean(torch.abs(pred - y_cpu)).item())
-    if metric == "spearman":
-        return float(_spearman(pred, y_cpu))
-    if metric == "auroc":
-        # Expect binary labels; use torchmetrics for consistency with the rest
-        # of the project.
-        from torchmetrics.functional.classification import binary_auroc
-
-        prob = torch.sigmoid(pred)
-        return float(binary_auroc(prob, y_cpu.to(torch.int)).item())
-    raise ValueError(f"Unsupported metric: {metric}")
-
-
-def _spearman(x: torch.Tensor, y: torch.Tensor) -> float:
-    # Spearman = Pearson on ranks. Use numpy argsort for ties-aware ranking.
-    def _rank(a: torch.Tensor) -> torch.Tensor:
-        arr = a.numpy()
-        order = np.argsort(arr, kind="mergesort")
-        ranks = np.empty_like(order, dtype=np.float64)
-        ranks[order] = np.arange(len(arr), dtype=np.float64)
-        # Average ranks for ties
-        _, inv, counts = np.unique(arr, return_inverse=True, return_counts=True)
-        avg = np.zeros_like(counts, dtype=np.float64)
-        # sum of ranks within each tied group
-        sums = np.zeros_like(counts, dtype=np.float64)
-        np.add.at(sums, inv, ranks)
-        avg = sums / counts
-        return torch.from_numpy(avg[inv])
-
-    rx = _rank(x)
-    ry = _rank(y)
-    rx = rx - rx.mean()
-    ry = ry - ry.mean()
-    denom = (rx.norm() * ry.norm()).item()
-    if denom == 0.0:
-        return 0.0
-    return float((rx * ry).sum().item() / denom)
+    return score_predictions(pred, y, kind=kind, metric=metric)

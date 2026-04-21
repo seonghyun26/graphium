@@ -22,7 +22,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 eval "$(conda shell.bash hook)"
-conda activate graphium
+conda activate graphium-downstream 2>/dev/null || conda activate graphium
 
 PAIRMIXER_CKPT=${1:-_}
 ENCODERS=${ENCODERS:-minimol,mole}
@@ -36,8 +36,8 @@ if [[ "${PAIRMIXER_CKPT}" != "_" ]]; then
     ENCODERS="pairmixer,${ENCODERS}"
 fi
 
-if [[ ! -d "data/downstream/gram_dti" ]]; then
-    echo "ERROR: data/downstream/gram_dti/ missing. Run prepare_data.sh first."
+if [[ ! -d "../data/downstream/gram_dti" ]]; then
+    echo "ERROR: ../data/downstream/gram_dti/ missing. Run prepare_data.sh first."
     exit 1
 fi
 

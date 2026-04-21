@@ -23,7 +23,10 @@ from .base import MoleculeEncoder, bisect_embed
 
 class MolEEncoder(MoleculeEncoder):
     encoder_tag: str = "mole_gin_concat"
-    out_dim: int = 256
+    # Lazy — depends on the upstream checkpoint. The current default
+    # (gin_concat_R1000_E8000_lambda0.0001) produces 1000-d embeddings; older
+    # R256 variants emit 256-d. Inferred on the first ``extract()`` call.
+    out_dim: int = -1
 
     def __init__(self, *, device: str = "cpu", batch_size: int = 2048):
         self._device = device
@@ -92,5 +95,13 @@ class MolEEncoder(MoleculeEncoder):
         )
         survivors = [r for r, ok in zip(results, mask) if ok]
         if not survivors:
+            if self.out_dim < 0:
+                raise RuntimeError(
+                    "MolEEncoder: all SMILES failed on the first call; cannot infer out_dim. "
+                    "Pass at least one valid SMILES first."
+                )
             return np.zeros((0, self.out_dim), dtype=np.float32), mask
-        return np.stack(survivors, axis=0).astype(np.float32), mask
+        feats = np.stack(survivors, axis=0).astype(np.float32)
+        if self.out_dim < 0:
+            self.out_dim = int(feats.shape[1])
+        return feats, mask

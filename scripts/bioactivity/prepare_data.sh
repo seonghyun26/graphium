@@ -17,7 +17,7 @@ conda activate graphium-downstream 2>/dev/null || conda activate graphium
 
 CHEMBL_DB=${1:?"Usage: $0 <chembl_33.db>"}
 JUMP_METADATA_DIR=${JUMP_METADATA_DIR:-/home/shpark/prj-molrepr/datacache/jump_cpcnn/metadata}
-OUT_DIR=${OUT_DIR:-data/downstream/bioactivity}
+OUT_DIR=${OUT_DIR:-../data/downstream/bioactivity}
 SEED=${SEED:-0}
 
 mkdir -p "${OUT_DIR}"

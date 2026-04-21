@@ -10,15 +10,59 @@
 All encoders / heads / subsets / folds share one CSV:
 ``results/downstream/gram_dti.csv``. Each row = one (encoder, subset, method,
 fold, head) combination. Use the dashboard notebook to aggregate.
+
+CPU usage: sklearn MLP / LogReg and CPU-side torch default to one BLAS thread
+per physical core, which on high-core hosts pushes load averages > 300 and
+starves any concurrent GPU run of its dataloader cores. Cap with
+``--cpu-threads N`` (or ``GRAMDTI_CPU_THREADS=N``); default is 8.
 """
 from __future__ import annotations
 
+# ---- CPU thread caps (must come before numpy / sklearn / torch import) ----
+import os
+import sys as _sys
+
+
+def _cap_cpu_threads() -> int:
+    # CLI flag wins over env. Peek sys.argv early since argparse hasn't run.
+    n = int(os.environ.get("GRAMDTI_CPU_THREADS", "8"))
+    argv = _sys.argv
+    for i, tok in enumerate(argv):
+        if tok == "--cpu-threads" and i + 1 < len(argv):
+            n = int(argv[i + 1])
+            break
+        if tok.startswith("--cpu-threads="):
+            n = int(tok.split("=", 1)[1])
+            break
+    for var in (
+        "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
+    ):
+        os.environ.setdefault(var, str(n))
+    return n
+
+
+_CPU_THREADS = _cap_cpu_threads()
+
+# ---- standard imports ----
 import argparse
 import sys
 import time
 from pathlib import Path
 
 import numpy as np
+
+# Belt-and-suspenders: some libs cache thread counts at import time so the env
+# vars above don't always stick. Cap torch's internal pools too.
+try:
+    import torch as _torch
+    _torch.set_num_threads(_CPU_THREADS)
+    _torch.set_num_interop_threads(max(1, _CPU_THREADS // 2))
+except ImportError:
+    pass
+except RuntimeError:
+    # torch refuses to set interop threads twice; ignore on subsequent imports.
+    pass
 
 from downstream.model import available_encoders, load_encoder
 from downstream.tasks.common import (
@@ -182,6 +226,11 @@ def main() -> None:
     # autogluon-only
     p.add_argument("--autogluon-time-limit", type=int, default=600)
     p.add_argument("--autogluon-preset", default="medium_quality")
+
+    # cpu throttling (already applied at import time; listed here for --help)
+    p.add_argument("--cpu-threads", type=int, default=_CPU_THREADS,
+                   help=f"BLAS/OpenMP thread cap (already applied; default {_CPU_THREADS}, "
+                        "override with --cpu-threads N or GRAMDTI_CPU_THREADS=N)")
 
     # paths
     p.add_argument("--data-dir", default=str(ROOT / DEFAULT_DATA_DIR))
