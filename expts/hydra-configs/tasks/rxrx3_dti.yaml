@@ -1,0 +1,67 @@
+# @package _global_
+
+datamodule:
+  args:
+    task_specific_args:
+      rxrx3:
+        df_path: /home/shpark/prj-molrepr/graphium/data/rxrx3/rxrx3_smiles_embeddings.csv
+        smiles_col: "SMILES_nometa"
+        label_cols: feature_*
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
+      dti:
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/dti_esm2_100k.csv
+        smiles_col: "SMILES_nometa"
+        label_cols: feature_*
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
+
+architecture:
+  task_heads:
+    rxrx3:
+      task_level: graph
+      out_dim: 384
+      hidden_dims: 128
+      depth: 2
+      activation: relu
+      last_activation: none
+    dti:
+      task_level: graph
+      out_dim: 2560
+      hidden_dims: 128
+      depth: 2
+      activation: relu
+      last_activation: none
+
+predictor:
+  loss_fun:
+    rxrx3: mae_ipu
+    dti: mae_ipu
+  metrics_on_progress_bar:
+    rxrx3: ['mae']
+    dti: ['mae']
+  metrics_on_training_set:
+    rxrx3: ['mae']
+    dti: ['mae']
+
+metrics:
+  rxrx3:
+  - name: mae
+    metric: mae_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu
+  dti:
+  - name: mae
+    metric: mae_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu

@@ -1,0 +1,18 @@
+# @package _global_
+
+# GPS++ 768d/8L with the ToyMix dataset.
+constants:
+  name: toymix_gpspp_768
+  seed: 42
+  max_epochs: 100
+  data_dir: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/neurips2023-small/
+
+datamodule:
+  args:
+    batch_size_training: 128
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/small-dataset/gpspp_768/${now:%Y-%m-%d_%H-%M-%S}/

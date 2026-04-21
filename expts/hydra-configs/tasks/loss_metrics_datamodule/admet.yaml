@@ -55,7 +55,7 @@ predictor:
     lr: 4.e-5 # warmup can be scheduled using torch_scheduler_kwargs
   torch_scheduler_kwargs:
     module_type: WarmUpLinearLR
-    max_num_epochs: &max_epochs 10
+    max_num_epochs: &max_epochs 100
     warmup_epochs: 10
     verbose: False
   target_nan_mask: null # null: no mask, 0: 0 mask, ignore-flatten, ignore-mean-per-label
@@ -139,3 +139,18 @@ datamodule:
     # TDC specific
     tdc_benchmark_names: null
     tdc_train_val_seed: ${constants.seed}
+    processed_graph_data_path: null
+
+# Sensible defaults for ADMET benchmark runs (scratch and finetuning).
+# Pretrain configs override raise_train_error and save_last as needed.
+constants:
+  raise_train_error: false
+
+probe:
+  # ADMET benchmark runs are the downstream target themselves, so the
+  # extra ADMET linear-probe callback from main.yaml is redundant here.
+  enabled: false
+
+trainer:
+  model_checkpoint:
+    save_last: false

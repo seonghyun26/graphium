@@ -1,0 +1,73 @@
+# @package _global_
+# PairMixer ~12M configuration (F3hlr — best from architecture search).
+#
+# D_s=96, D_z=224, depth=8 → 11.6M params
+#   pair-track backbone: 8 layers * 24 * D_z^2 ≈ 9.6M
+#   extras (pre_nn, pre_nn_edges, OPM, graph_output_nn, task heads) ≈ 2M
+#
+# Search result (2026-04-15):
+#   - Phase 1: D_z width beats depth at fixed param budget
+#   - Phase 3: expanded features (hybridization, chirality, electronegativity,
+#              vdw-radius, num-ring, mass, conjugated) improve caco2/bbb_martins
+#   - LR=2e-4 (5× default) is the single biggest lever —
+#     caco2_wang MAE 1.16 → 0.609, clearance_microsome_az 0.0 → 0.15
+#
+# Reference: Ouyang-Zhang et al., arXiv:2510.18870
+
+architecture:
+  pre_nn:
+    out_dim: 96
+    hidden_dims: 96
+
+  pre_nn_edges:
+    out_dim: 64                  # feeds pair init; small by default, overridable
+    hidden_dims: 64
+    depth: 2
+    activation: relu
+    last_activation: none
+    dropout: 0.02
+    normalization: layer_norm
+    last_normalization: layer_norm
+    residual_type: none
+
+  gnn:
+    in_dim: 96
+    out_dim: 96
+    hidden_dims: 96
+    in_dim_edges: 64             # Must match pre_nn_edges.out_dim
+    depth: 8
+    residual_type: none           # PairMixer doesn't update node features (s_backbone=s_init);
+                                  # simple residual would double them every layer → bf16 overflow.
+    virtual_node: logsum
+    layer_type: 'pyg:pairmixer'
+    layer_kwargs:
+      pair_dim: 224              # Main capacity lever (search winner: 224 > 192 > 256@shallow)
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      use_checkpoint: true
+      compile_mode: pair_track
+      edge_injection: true          # MiniMol-style per-layer bond injection
+
+  graph_output_nn:
+    graph:
+      pair_dim: 224              # Must match gnn.layer_kwargs.pair_dim
+      pair_pool: stats           # graph-aware stats pooling (level_in_dim = 6*pair_dim)
+      node_pooling: [max]        # concat node pool onto pair-stats
+      hidden_dims: 256
+      out_dim: 512
+
+# ── Expanded featurization (search-validated) ─────────────────────────────────
+# Adds hybridization, chirality (onehot), mass, electronegativity, vdw-radius,
+# num-ring (float), and conjugated (edge) over the toymix baseline.
+datamodule:
+  args:
+    featurization:
+      atom_property_list_onehot: [atomic-number, group, period, total-valence, hybridization, chirality]
+      atom_property_list_float: [degree, formal-charge, radical-electron, aromatic, in-ring, mass, electronegativity, vdw-radius, num-ring]
+      edge_property_list: [bond-type-onehot, stereo, in-ring, conjugated]
+
+# ── Optimiser: high LR (search-validated, 5× default) ────────────────────────
+predictor:
+  optim_kwargs:
+    lr: 2.e-4

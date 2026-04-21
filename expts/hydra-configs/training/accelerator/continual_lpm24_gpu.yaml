@@ -1,0 +1,26 @@
+# @package _global_
+# GPU accelerator companion for continual_lpm24 training. Mirrors
+# continual_bbbc047_dti_pactivity_gpu.yaml: conservative batch size so
+# gpspp_800M fits comfortably, 16-mixed precision, epoch count pinned to
+# constants.max_epochs.
+
+accelerator:
+  float32_matmul_precision: medium
+
+datamodule:
+  args:
+    batch_size_training: 128
+    batch_size_inference: 128
+    featurization_n_jobs: 6
+    num_workers: 4
+    persistent_workers: true
+
+predictor:
+  metrics_every_n_train_steps: 500
+  torch_scheduler_kwargs:
+    max_num_epochs: ${constants.max_epochs}
+
+trainer:
+  trainer:
+    precision: 16-mixed
+    max_epochs: ${constants.max_epochs}

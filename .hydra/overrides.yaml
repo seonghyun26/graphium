@@ -1,0 +1,6 @@
+- model=gpspp_800M
+- accelerator=gpu
+- tasks=rxrx3
+- training=rxrx3
+- architecture=largemix
+- ++constants.seed=0

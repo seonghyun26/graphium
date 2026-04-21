@@ -1,0 +1,10 @@
+# @package _global_
+# PairMixer 10M with virtual node (sum aggregation)
+# Identical to pairmixer_10M except virtual_node is enabled.
+
+defaults:
+  - pairmixer_10M
+
+architecture:
+  gnn:
+    virtual_node: 'sum'

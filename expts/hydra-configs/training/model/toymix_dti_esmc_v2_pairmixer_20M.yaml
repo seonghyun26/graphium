@@ -1,0 +1,25 @@
+# @package _global_
+
+# PairMixer medium-large (~20M params) with the ToyMix + DTI (ESM-C v2) dataset.
+constants:
+  name: toymix_dti_esmc_v2_pairmixer_20M
+  seed: 42
+  max_epochs: 100
+  data_dir: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix-dti-esmc-v2/
+
+datamodule:
+  args:
+    batch_size_training: 8       # 2x 40M (bs=4); halved after repeated OOM on esmc_v2 head
+    batch_size_inference: 8
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix-dti-esmc-v2/pairmixer_20M/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed        # PairMixer triangle ops overflow fp16; bf16 has float32-range exponents
+    accumulate_grad_batches: 4   # effective batch = 32 (restores original esmc_v2 20M anchor; per-step quartered by OOM)

@@ -1,0 +1,39 @@
+# @package _global_
+#
+# GPS++ 800M continual pre-training on BBBC047 + DTI pActivity, starting from
+# a LargeMix checkpoint. Mirrors training/model/largemix_gpspp_800M.yaml so
+# every architectural / batch-shape parameter matches the source checkpoint.
+#
+# Override the checkpoint path on the CLI when launching, e.g.:
+#   EXTRA_FLAGS="continual_pretraining.pretrained_checkpoint=/abs/path/to/last.ckpt" \
+#     bash scripts/00_pretrain.sh gpspp_800M bbbc047_dti_pactivity 0
+
+constants:
+  name: continual_gpspp_800M_bbbc047_dti
+  seed: 42
+  max_epochs: 50
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/continual-bbbc047-dti/
+
+datamodule:
+  args:
+    batch_size_training: 128
+    dataloading_from: disk
+    num_workers: 4
+    persistent_workers: true
+
+trainer:
+  trainer:
+    accumulate_grad_batches: 3  # effective batch = 128 * 3 = 384, matches LargeMix run
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/continual-pretraining/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/
+
+# -- Continual pre-training: load backbone weights from a LargeMix checkpoint --
+# Set this to the absolute path of your LargeMix `last.ckpt`. The state-dict
+# loader copies pe_encoders / pre_nn / gnn / graph_output_nn['graph'] and skips
+# the old (l1000_*, pcba_1328, pcqm4m_*) task heads + the unused node-level
+# graph_output_nn. New (bbbc047, dti_pactivity) heads stay randomly initialized.
+continual_pretraining:
+  pretrained_checkpoint: ???   # required: override on CLI or in a launch script
+  strict: false
+  # exclude_prefixes: []       # optional: e.g. ["model.task_heads.graph_output_nn."]

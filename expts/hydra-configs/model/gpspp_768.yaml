@@ -1,0 +1,30 @@
+# @package _global_
+# GPS++ 768d/8L configuration — matches the MoE pilot model scale
+# for controlled ablation (with vs without MoE at same architecture).
+
+defaults:
+  - gpspp
+
+datamodule:
+  args:
+    batch_size_training: 128
+
+architecture:
+  gnn:
+    in_dim: 768
+    out_dim: 768
+    hidden_dims: 768
+    depth: 8
+    layer_kwargs:
+      mpnn_kwargs:
+        in_dim: 768
+        out_dim: 768
+
+  pre_nn:
+    out_dim: 768
+    hidden_dims: 768
+
+  graph_output_nn:
+    graph:
+      hidden_dims: 768
+      out_dim: 512

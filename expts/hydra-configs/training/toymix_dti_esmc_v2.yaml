@@ -1,0 +1,42 @@
+# @package _global_
+
+predictor:
+  random_seed: ${constants.seed}
+  optim_kwargs:
+    lr: 3.e-4
+  torch_scheduler_kwargs:
+    module_type: WarmUpLinearLR
+    max_num_epochs: ${constants.max_epochs}
+    warmup_epochs: 5
+    verbose: False
+  scheduler_kwargs: null
+  target_nan_mask: null
+  multitask_handling: flatten
+
+  # Adaptive Modality Dropout (AMD) -- GRAM-DTI, arxiv.org/abs/2509.21971.
+  # Opt-in: set ``enabled: true`` to drop modalities whose per-step gradient
+  # norm (on the shared encoder: pre_nn, pre_nn_edges, encoder_manager, gnn)
+  # lies outside ``[mean/threshold, mean*threshold]``. Surviving modalities
+  # are summed for backward; dropped ones contribute 0 that step. Task names
+  # below resolve with or without the task-level prefix (e.g. ``graph_dti``).
+  # adaptive_modality_dropout:
+  #   enabled: true
+  #   threshold: 2.0           # drop if norm > mean*T or < mean/T
+  #   warmup_epochs: 0         # number of epochs to skip before engaging AMD
+  #   log_grad_norms: true     # emit train/amd/* metrics to the logger
+  #   modalities:              # optional; default is 1 task = 1 modality
+  #     dti: protein           # DTI branch uses ESMCv2 protein embeddings
+  #     qm9: molecular
+  #     tox21: molecular
+  #     zinc: molecular
+
+trainer:
+  seed: ${constants.seed}
+  model_checkpoint:
+    filename: ${constants.name}
+    save_last: True
+  trainer:
+    precision: 16
+    max_epochs: ${constants.max_epochs}
+    min_epochs: 1
+    check_val_every_n_epoch: 20

@@ -1,0 +1,37 @@
+# @package _global_
+# Boltz2-inspired Pairformer configuration (~155M parameters)
+#
+# Dimensions match the Boltz2 trunk (Passaro et al., 2025):
+#   - Single (node) track: 384
+#   - Pairwise track: 128
+#   - Depth: 48 (Boltz2 uses 64; 48 is practical for molecular graphs)
+#
+# Designed for single-GPU training on 96GB GPUs (RTX PRO 6000 Blackwell)
+
+defaults:
+  - pairformer
+
+architecture:
+  pre_nn:
+    out_dim: 384
+    hidden_dims: 384
+
+  gnn:
+    in_dim: 384
+    out_dim: 384
+    hidden_dims: 384
+    depth: 48
+    layer_kwargs:
+      pair_dim: 128              # Boltz2 pair track dimension
+      num_heads: 8               # 384/8 = 48 head dim
+      pairwise_head_width: 32    # Per-head hidden dim for triangle attention
+      pairwise_num_heads: 4      # Triangle attention heads
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0    # SwiGLU transition MLP: 4x expansion
+      opm_hidden: 32             # Outer-product-mean hidden dim
+      use_checkpoint: true
+
+  graph_output_nn:
+    graph:
+      hidden_dims: 384
+      out_dim: 1024

@@ -1,0 +1,15 @@
+# @package _global_
+
+constants:
+  name: bbbc047_gpspp_800M
+  seed: 42
+  max_epochs: 100
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/bbbc047/
+
+datamodule:
+  args:
+    batch_size_training: 128
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/bbbc047/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/

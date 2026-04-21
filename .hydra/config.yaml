@@ -1,0 +1,225 @@
+accelerator:
+  type: gpu
+  float32_matmul_precision: medium
+architecture:
+  model_type: FullGraphMultiTaskNetwork
+  mup_base_path: null
+  pre_nn:
+    out_dim: 1536
+    hidden_dims: 1536
+    depth: 2
+    activation: relu
+    last_activation: none
+    dropout: 0.1
+    normalization: ${constants.norm}
+    last_normalization: ${constants.norm}
+    residual_type: none
+  pre_nn_edges: null
+  pe_encoders:
+    out_dim: 32
+    pool: sum
+    last_norm: None
+    encoders:
+      la_pos:
+        encoder_type: laplacian_pe
+        input_keys:
+        - laplacian_eigvec
+        - laplacian_eigval
+        output_keys:
+        - feat
+        hidden_dim: 64
+        out_dim: 32
+        model_type: DeepSet
+        num_layers: 2
+        num_layers_post: 1
+        dropout: 0.1
+        first_normalization: none
+      rw_pos:
+        encoder_type: mlp
+        input_keys:
+        - rw_return_probs
+        output_keys:
+        - feat
+        hidden_dim: 64
+        out_dim: 32
+        num_layers: 2
+        dropout: 0.1
+        normalization: ${constants.norm}
+        first_normalization: ${constants.norm}
+  gnn:
+    in_dim: 1536
+    out_dim: 1536
+    hidden_dims: 1536
+    depth: 12
+    activation: gelu
+    last_activation: none
+    dropout: 0.1
+    normalization: ${constants.norm}
+    last_normalization: ${constants.norm}
+    residual_type: simple
+    virtual_node: none
+    layer_type: pyg:gps
+    layer_kwargs:
+      node_residual: false
+      mpnn_type: pyg:mpnnplus
+      mpnn_kwargs:
+        in_dim: 1536
+        out_dim: 1536
+        in_dim_edges: 13
+        out_dim_edges: 13
+      attn_type: full-attention
+      precision: 16-true
+      attn_kwargs:
+        num_heads: 32
+      droppath_rate_attn: 0.0
+      droppath_rate_ffn: 0.0
+  graph_output_nn:
+    graph:
+      pooling:
+      - sum
+      out_dim: 1024
+      hidden_dims: 1536
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: 0.1
+      normalization: ${constants.norm}
+      last_normalization: none
+      residual_type: none
+    node:
+      pooling:
+      - sum
+      out_dim: 64
+      hidden_dims: 64
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: 0.1
+      normalization: ${constants.norm}
+      last_normalization: none
+      residual_type: none
+  task_heads:
+    rxrx3:
+      task_level: graph
+      out_dim: 384
+      hidden_dims: 128
+      depth: 2
+      activation: relu
+      last_activation: none
+datamodule:
+  module_type: MultitaskFromSmilesDataModule
+  args:
+    prepare_dict_or_graph: pyg:graph
+    featurization_n_jobs: 6
+    featurization_progress: true
+    featurization_backend: loky
+    processed_graph_data_path: ${constants.datacache_path}
+    dataloading_from: disk
+    num_workers: 6
+    persistent_workers: true
+    featurization:
+      atom_property_list_onehot:
+      - atomic-number
+      - group
+      - period
+      - total-valence
+      atom_property_list_float:
+      - degree
+      - formal-charge
+      - radical-electron
+      - aromatic
+      - in-ring
+      edge_property_list:
+      - bond-type-onehot
+      - stereo
+      - in-ring
+      add_self_loop: false
+      explicit_H: false
+      use_bonds_weights: false
+      pos_encoding_as_features:
+        pos_types:
+          lap_eigvec:
+            pos_level: node
+            pos_type: laplacian_eigvec
+            num_pos: 8
+            normalization: none
+            disconnected_comp: true
+          lap_eigval:
+            pos_level: node
+            pos_type: laplacian_eigval
+            num_pos: 8
+            normalization: none
+            disconnected_comp: true
+          rw_pos:
+            pos_level: node
+            pos_type: rw_return_probs
+            ksteps: 16
+      conformer_property_list: []
+    task_specific_args:
+      rxrx3:
+        df_path: /home/shpark/prj-molrepr/graphium/data/rxrx3/rxrx3_smiles_embeddings.csv
+        smiles_col: SMILES_nometa
+        label_cols: feature_*
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
+        label_normalization:
+          normalize_val_test: true
+          method: normal
+    batch_size_training: 192
+    batch_size_inference: 256
+predictor:
+  loss_fun:
+    rxrx3: mae_ipu
+  metrics_on_progress_bar:
+    rxrx3:
+    - mae
+  metrics_on_training_set:
+    rxrx3:
+    - mae
+  random_seed: ${constants.seed}
+  optim_kwargs:
+    lr: 0.0001
+  torch_scheduler_kwargs:
+    module_type: WarmUpLinearLR
+    max_num_epochs: ${constants.max_epochs}
+    warmup_epochs: 5
+    verbose: false
+  scheduler_kwargs: null
+  target_nan_mask: null
+  multitask_handling: flatten
+  metrics_every_n_train_steps: 100
+metrics:
+  rxrx3:
+  - name: mae
+    metric: mae_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu
+trainer:
+  seed: ${constants.seed}
+  logger:
+    save_dir: logs/rxrx3/
+    name: ${constants.name}
+    project: ${constants.name}
+  model_checkpoint:
+    dirpath: models_checkpoints/rxrx3/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: ${constants.name}
+    save_last: true
+  trainer:
+    precision: 16-mixed
+    max_epochs: ${constants.max_epochs}
+    min_epochs: 1
+    check_val_every_n_epoch: 5
+    accumulate_grad_batches: 2
+constants:
+  norm: layer_norm
+  name: rxrx3_gpspp_800M
+  seed: 0
+  max_epochs: 100
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/rxrx3/
+  wandb:
+    entity: eddy26
+    save_dir: null
+    project: graphium

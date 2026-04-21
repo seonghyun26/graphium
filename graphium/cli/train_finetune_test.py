@@ -40,11 +40,33 @@ from graphium.hyper_param_search import (
     extract_main_metric_for_hparam_search,
 )
 from graphium.trainer.predictor import PredictorModule
+from graphium.utils.load_pretrained_backbone import load_pretrained_backbone
 from graphium.utils.safe_run import SafeRun
 
 import graphium.cli.finetune_utils
 
 TESTING_ONLY_CONFIG_KEY = "testing_only"
+CONTINUAL_PRETRAINING_CONFIG_KEY = "continual_pretraining"
+
+
+def _extract_pretrain_dataset(tags) -> str:
+    """Extract pretrain dataset name from W&B tags list.
+
+    Tags follow the pattern: ['model', 'finetune', 'admet', 'pretrain_dataset', ...]
+    The pretrain dataset is the tag that is not a known keyword.
+    """
+    if not tags or not isinstance(tags, (list, tuple)):
+        return None
+    skip = {"finetune", "scratch", "admet", "moe", "pretrain", "arch_comparison",
+            "speed_benchmark", "scratch_benchmark",
+            # Downstream benchmark identifiers (not pretrain datasets)
+            "polaris_admet", "polaris_admet_test", "dti_eval", "belka",
+            # Experiment-specific tags
+            "sweep", "probe_vs_ft", "rep5", "linear_probe",
+            "norm_ablation", "no_norm"}
+    # First tag is model name; skip it and known keywords
+    candidates = [t for t in tags[1:] if t not in skip]
+    return candidates[0] if candidates else None
 
 
 def _save_results_csv(results: dict, cfg: dict, output_dir: str) -> None:
@@ -66,12 +88,21 @@ def _save_results_csv(results: dict, cfg: dict, output_dir: str) -> None:
     constants = cfg.get("constants", {})
     is_finetuning = "finetuning" in cfg
 
+    # Extract pretrain dataset name from W&B tags (more reliable than checkpoint path)
+    if is_finetuning:
+        wandb_tags = constants.get("wandb", {}).get("tags", [])
+        pretrain_dataset = _extract_pretrain_dataset(wandb_tags)
+        if pretrain_dataset is None:
+            pretrain_dataset = finetuning_cfg.get("pretrained_model", "unknown")
+    else:
+        pretrain_dataset = "scratch"
+
     row = {
         "timestamp": datetime.now().isoformat(),
         "model": cfg.get("architecture", {}).get("gnn", {}).get("layer_type", "unknown"),
         "task": constants.get("task", "multitask"),
         "seed": constants.get("seed", 0),
-        "pretrain_dataset": finetuning_cfg.get("pretrained_model", "scratch") if is_finetuning else "scratch",
+        "pretrain_dataset": pretrain_dataset,
         "is_finetuning": is_finetuning,
         "unfreeze_depth": finetuning_cfg.get("training_kwargs", {}).get("unfreeze_pretrained_depth", "N/A") if is_finetuning else "N/A",
         "epoch_unfreeze_all": finetuning_cfg.get("training_kwargs", {}).get("epoch_unfreeze_all", "N/A") if is_finetuning else "N/A",
@@ -91,16 +122,19 @@ def _save_results_csv(results: dict, cfg: dict, output_dir: str) -> None:
 
     # Write header if file doesn't exist; expand columns if needed; then append
     file_exists = os.path.isfile(csv_path)
-    all_fieldnames = sorted(row.keys())
 
     if file_exists:
         with open(csv_path, "r", newline="") as rf:
             reader = csv.DictReader(rf)
-            existing_cols = set(reader.fieldnames or [])
-        new_cols = set(row.keys()) - existing_cols
+            existing_cols = list(reader.fieldnames or [])
+        new_cols = set(row.keys()) - set(existing_cols)
         if new_cols:
-            all_fieldnames = sorted(existing_cols | set(row.keys()))
+            all_fieldnames = existing_cols + sorted(new_cols)
             _rewrite_csv_header(csv_path, all_fieldnames)
+        else:
+            all_fieldnames = existing_cols
+    else:
+        all_fieldnames = sorted(row.keys())
 
     with open(csv_path, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=all_fieldnames, extrasaction="ignore")
@@ -236,18 +270,46 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
         )
         # We pause here briefly, to make sure the notification is seen as there's lots of logs afterwards
         time.sleep(5)
+    # Trim task_heads / loss_fun / metrics to a single active task. Datamodules
+    # that run one benchmark at a time (TDC ADMET, Polaris ADME-Fang) emit
+    # task_levels for only the selected benchmark, so the predictor breaks if
+    # config-level dicts still list the other tasks.
+    def _filter_single_task(cfg):
+        t = cfg["constants"]["task"]
+        cfg["metrics"] = {k: v for k, v in cfg["metrics"].items() if k == t}
+        cfg["architecture"]["task_heads"] = {
+            k: v for k, v in cfg["architecture"]["task_heads"].items() if k == t
+        }
+        cfg["predictor"]["loss_fun"] = {
+            k: v for k, v in cfg["predictor"]["loss_fun"].items() if k == t
+        }
+        cfg["predictor"]["metrics_on_progress_bar"] = {
+            k: v for k, v in cfg["predictor"]["metrics_on_progress_bar"].items() if k == t
+        }
+
+    _module = cfg.get("datamodule", {}).get("module_type")
+    _args = cfg.get("datamodule", {}).get("args", {})
+    _is_downstream = False
+
     # Modify the config for finetuning
     if FINETUNING_CONFIG_KEY in cfg:
         cfg = modify_cfg_for_finetuning(cfg)
-    # Filter config for ADMET single-task training (without finetuning)
-    elif (
-        cfg.get("datamodule", {}).get("module_type") == "ADMETBenchmarkDataModule"
-        and cfg.get("datamodule", {}).get("args", {}).get("tdc_benchmark_names") is not None
-    ):
-        cfg['metrics'] = {k: v for k, v in cfg["metrics"].items() if k == cfg['constants']['task']}
-        cfg['architecture']['task_heads'] = {k: v for k, v in cfg["architecture"]["task_heads"].items() if k == cfg['constants']['task']}
-        cfg['predictor']['loss_fun'] = {k: v for k, v in cfg["predictor"]["loss_fun"].items() if k == cfg['constants']['task']}
-        cfg['predictor']['metrics_on_progress_bar'] = {k: v for k, v in cfg['predictor']['metrics_on_progress_bar'].items() if k == cfg['constants']['task']}
+        _is_downstream = True
+    # TDC ADMET single-task training (without finetuning)
+    elif _module == "ADMETBenchmarkDataModule" and _args.get("tdc_benchmark_names") is not None:
+        _filter_single_task(cfg)
+        _is_downstream = True
+    # Polaris biogen/adme-fang-v1 single-task training (without finetuning)
+    elif _module == "PolarisADMETBenchmarkDataModule" and _args.get("polaris_benchmark_names") is not None:
+        _filter_single_task(cfg)
+        _is_downstream = True
+
+    # ADMET linear probe is a pretraining-only monitor — its TDC featurization
+    # and per-epoch SGD add startup + runtime cost that has no meaning when the
+    # run itself is already a downstream benchmark. Force-disable for any
+    # downstream run regardless of the composed ``probe`` defaults.
+    if _is_downstream and "probe" in cfg:
+        cfg["probe"]["enabled"] = False
 
     st = timeit.default_timer()
 
@@ -313,6 +375,25 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
             global_bs=global_bs,
         )
 
+        # Continual pre-training: load backbone weights from a previous checkpoint
+        # into the freshly instantiated multitask network. Task heads in the new
+        # config that don't exist in the checkpoint stay randomly initialized.
+        if CONTINUAL_PRETRAINING_CONFIG_KEY in cfg:
+            if FINETUNING_CONFIG_KEY in cfg:
+                raise ValueError(
+                    "Configs 'continual_pretraining' and 'finetuning' are mutually "
+                    "exclusive. Continual pre-training keeps the model as a plain "
+                    "FullGraphMultiTaskNetwork; finetuning wraps it in "
+                    "FullGraphFinetuningNetwork."
+                )
+            cpt_cfg = cfg[CONTINUAL_PRETRAINING_CONFIG_KEY]
+            load_pretrained_backbone(
+                predictor=predictor,
+                checkpoint_path=cpt_cfg["pretrained_checkpoint"],
+                strict=cpt_cfg.get("strict", False),
+                exclude_prefixes=set(cpt_cfg.get("exclude_prefixes", []) or []),
+            )
+
     logger.info(predictor.model)
     logger.info(ModelSummary(predictor, max_depth=4))
 
@@ -325,6 +406,21 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
         if FINETUNING_CONFIG_KEY in cfg:
             finetuning_training_kwargs = cfg["finetuning"]["training_kwargs"]
             trainer.callbacks.append(GraphFinetuning(**finetuning_training_kwargs))
+
+        # Add HuggingFace upload callback if configured
+        hf_cfg = cfg["trainer"].get("upload_to_hf", None)
+        if hf_cfg:
+            from graphium.callbacks.hf_upload import HuggingFaceUploadCallback, _make_model_display_name
+            hf_user = hf_cfg if isinstance(hf_cfg, str) else hf_cfg.get("user", "eddy26")
+            hf_private = True if isinstance(hf_cfg, str) else hf_cfg.get("private", True)
+            constants_name = cfg.get("constants", {}).get("name", "graphium-checkpoint")
+            repo_name = _make_model_display_name(constants_name)
+            trainer.callbacks.append(HuggingFaceUploadCallback(
+                hf_user=hf_user,
+                repo_name=repo_name,
+                cfg=cfg,
+                private=hf_private,
+            ))
 
         if wandb_cfg is not None:
             save_params_to_wandb(trainer.logger, cfg, predictor, datamodule, unresolved_config=unresolved_cfg)

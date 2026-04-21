@@ -1,0 +1,22 @@
+# @package _global_
+
+accelerator:
+  float32_matmul_precision: medium
+
+datamodule:
+  args:
+    batch_size_training: 64
+    batch_size_inference: 64
+    featurization_n_jobs: 6
+    num_workers: 4
+    persistent_workers: false
+
+predictor:
+  metrics_every_n_train_steps: 1000
+  torch_scheduler_kwargs:
+    max_num_epochs: ${constants.max_epochs}
+
+trainer:
+  trainer:
+    precision: 16-mixed
+    max_epochs: ${constants.max_epochs}

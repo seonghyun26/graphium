@@ -1,0 +1,3 @@
+defaults:
+  - task_heads: cell_bioactivity
+  - loss_metrics_datamodule: cell_bioactivity

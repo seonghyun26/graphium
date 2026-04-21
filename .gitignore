@@ -201,3 +201,12 @@ dmypy.json
 *.csv
 *.parquet
 *.toml
+
+autoresearch/
+
+*.DS_Store
+*.tab
+*.zip
+*.omc
+*scheduled_tasks.lock
+.omx/

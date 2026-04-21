@@ -1,0 +1,101 @@
+# @package _global_
+
+# Loss / metrics / datamodule spec for the 29-assay ChEMBL bioactivity benchmark
+# (Fredinh et al. 2024). Multi-task binary classification with masked-NaN BCE loss and
+# ROC-AUC / PRC-AUC metrics averaged per-label.
+
+predictor:
+  loss_fun:
+    cell_bioactivity: bce_logits
+  metrics_on_progress_bar:
+    cell_bioactivity: ['auroc']
+  metrics_on_training_set:
+    cell_bioactivity: ['auroc']
+  random_seed: ${constants.seed}
+  optim_kwargs:
+    lr: 1.e-4
+  torch_scheduler_kwargs:
+    module_type: CosineAnnealingLR
+    T_max: ${constants.max_epochs}
+    eta_min: 1.0e-6
+  # Missing labels are encoded as NaN; ignore-mean-per-label masks them out and averages
+  # per-assay so assays with more labels don't dominate the loss scale.
+  target_nan_mask: ignore-mean-per-label
+  multitask_handling: mean-per-label
+
+metrics:
+  cell_bioactivity:
+    - name: auroc
+      metric: auroc
+      task: binary
+      multitask_handling: mean-per-label
+      target_nan_mask: ignore
+      threshold_kwargs: null
+    - name: auprc
+      metric: averageprecision
+      task: binary
+      multitask_handling: mean-per-label
+      target_nan_mask: ignore
+      threshold_kwargs: null
+    - name: accuracy
+      metric: accuracy
+      multitask_handling: mean-per-label
+      target_nan_mask: ignore
+      target_to_int: True
+      average: micro
+      threshold_kwargs:
+        operator: greater
+        threshold: 0.5
+        th_on_preds: True
+        th_on_target: True
+
+datamodule:
+  module_type: "MultitaskFromSmilesDataModule"
+  args:
+    task_specific_args:
+      cell_bioactivity:
+        df_path: /home/shpark/prj-molrepr/datacache/cell_bioactivity/cell_bioactivity.csv
+        smiles_col: "smiles"
+        # 29 ChEMBL assay columns (binary labels, NaN where missing). See
+        # scripts/prep_cell_bioactivity.py for how this CSV is generated.
+        label_cols:
+          - assay_688128
+          - assay_688238
+          - assay_688360
+          - assay_688546
+          - assay_688549
+          - assay_688612
+          - assay_688687
+          - assay_688812
+          - assay_688816
+          - assay_736947
+          - assay_737187
+          - assay_737287
+          - assay_737344
+          - assay_752347
+          - assay_752407
+          - assay_752434
+          - assay_752493
+          - assay_752563
+          - assay_752590
+          - assay_752594
+          - assay_845045
+          - assay_845102
+          - assay_845164
+          - assay_845169
+          - assay_845173
+          - assay_845177
+          - assay_845196
+          - assay_954338
+          - assay_1495346
+        splits_path: /home/shpark/prj-molrepr/datacache/cell_bioactivity/cell_bioactivity_split.csv
+        split_names: ["train", "val", "test"]
+        task_level: graph
+    processed_graph_data_path: null
+
+constants:
+  raise_train_error: false
+
+trainer:
+  model_checkpoint:
+    save_last: false

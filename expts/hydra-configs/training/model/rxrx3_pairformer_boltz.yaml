@@ -1,0 +1,24 @@
+# @package _global_
+
+# Boltz-inspired Pairformer with the RxRx3 cell morphology dataset.
+constants:
+  name: rxrx3_pairformer_boltz
+  seed: 42
+  max_epochs: 100
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/rxrx3/
+
+datamodule:
+  args:
+    batch_size_training: 8
+    batch_size_inference: 8
+    dataloading_from: ram
+    num_workers: 0
+    persistent_workers: false
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/rxrx3/pairformer_boltz/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed  # Pairformer triangle ops overflow fp16; bf16 has float32-range exponents

@@ -13,6 +13,7 @@ Refer to the LICENSE file for the full terms and conditions.
 
 from typing import Tuple, Union, Dict, Any
 from scipy.linalg import eig
+from scipy.sparse.linalg import eigsh
 from scipy.sparse import csr_matrix, diags, issparse, spmatrix
 import numpy as np
 import torch
@@ -27,6 +28,7 @@ def compute_laplacian_pe(
     cache: Dict[str, Any],
     disconnected_comp: bool = True,
     normalization: str = "none",
+    eig_method: str = "dense",
 ) -> Tuple[np.ndarray, str, Dict[str, Any]]:
     r"""
     Compute the Laplacian eigenvalues and eigenvectors of the Laplacian of the graph.
@@ -37,6 +39,9 @@ def compute_laplacian_pe(
         cache: Dictionary of cached objects
         disconnected_comp: Whether to compute the eigenvectors for each connected component
         normalization: Normalization to apply to the Laplacian
+        eig_method: Eigendecomposition method. "dense" uses full dense eig (scipy.linalg.eig),
+            "sparse" uses sparse partial eigsh (scipy.sparse.linalg.eigsh) which only computes
+            the num_pos smallest eigenvectors. "sparse" is faster for large molecules.
 
     Returns:
         Two possible outputs:
@@ -87,7 +92,7 @@ def compute_laplacian_pe(
             for component in components:
                 comp = list(component)
                 this_L = L_norm[comp][:, comp]
-                this_eigvals, this_eigvecs = _get_positional_eigvecs(this_L, num_pos=num_pos)
+                this_eigvals, this_eigvecs = _get_positional_eigvecs(this_L, num_pos=num_pos, method=eig_method)
 
                 # Eigenvalues previously set to infinity are now set to 0
                 # Any NaN in the eigvals or eigvecs will be set to 0
@@ -103,7 +108,7 @@ def compute_laplacian_pe(
 
     else:
         if "lap_eig" not in cache:
-            eigvals, eigvecs = _get_positional_eigvecs(L, num_pos=num_pos)
+            eigvals, eigvecs = _get_positional_eigvecs(L, num_pos=num_pos, method=eig_method)
 
             # Eigenvalues previously set to infinity are now set to 0
             # Any NaN in the eigvals or eigvecs will be set to 0
@@ -122,9 +127,51 @@ def compute_laplacian_pe(
 def _get_positional_eigvecs(
     matrix: Union[np.ndarray, spmatrix],
     num_pos: int,
+    method: str = "dense",
 ) -> Tuple[np.ndarray, np.ndarray]:
     r"""
     compute the eigenvalues and eigenvectors of a matrix
+    Parameters:
+        matrix: Matrix to compute the eigenvalues and eigenvectors of
+        num_pos: Number of eigenvalues and eigenvectors to compute
+        method: "dense" for full eigendecomposition (scipy.linalg.eig),
+            "sparse" for partial sparse eigendecomposition (scipy.sparse.linalg.eigsh)
+    Returns:
+        eigvals: Eigenvalues of the matrix
+        eigvecs: Eigenvectors of the matrix
+    """
+    mat_len = matrix.shape[0]
+
+    if method == "sparse" and mat_len > num_pos + 1:
+        # Use sparse eigsh: computes only num_pos smallest eigenvalues/eigenvectors.
+        # Requires k < N, so fall back to dense for very small molecules.
+        # sigma=0 with shift-invert finds eigenvalues nearest to 0 (smallest magnitude).
+        try:
+            eigvals, eigvecs = eigsh(matrix.tocsc(), k=num_pos, which="SM")
+        except Exception:
+            # Fall back to dense if eigsh fails (e.g. singular matrix)
+            eigvals, eigvecs = _get_positional_eigvecs_dense(matrix, num_pos)
+            return eigvals, eigvecs
+
+        # eigsh returns real values for symmetric matrices; sort by eigenvalue
+        sort_idx = eigvals.argsort()
+        eigvals = eigvals[sort_idx]
+        eigvecs = eigvecs[:, sort_idx]
+
+        # Normalize the eigvecs
+        eigvecs = eigvecs / np.maximum(np.sqrt(np.sum(eigvecs**2, axis=0, keepdims=True)), 1e-4)
+
+        return eigvals, eigvecs
+    else:
+        return _get_positional_eigvecs_dense(matrix, num_pos)
+
+
+def _get_positional_eigvecs_dense(
+    matrix: Union[np.ndarray, spmatrix],
+    num_pos: int,
+) -> Tuple[np.ndarray, np.ndarray]:
+    r"""
+    Original dense eigendecomposition: computes all eigenvalues/eigenvectors then selects the smallest.
     Parameters:
         matrix: Matrix to compute the eigenvalues and eigenvectors of
         num_pos: Number of eigenvalues and eigenvectors to compute

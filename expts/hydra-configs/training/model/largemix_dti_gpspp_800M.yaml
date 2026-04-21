@@ -1,0 +1,39 @@
+# @package _global_
+
+# GPS++ 800M with the LargeMix + DTI dataset.
+constants:
+  name: largemix_dti_gpspp_800M
+  seed: 42
+  max_epochs: 100
+  data_dir: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/largemix-dti/
+
+datamodule:
+  args:
+    batch_size_training: 48
+    dataloading_from: disk
+    task_specific_args:
+      dti:
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/dti_esm2_100k.csv
+      l1000_vcap:
+        df_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/LINCS_L1000_VCAP_0-2_th2.csv.gz
+        splits_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/l1000_vcap_random_splits.pt
+      l1000_mcf7:
+        df_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/LINCS_L1000_MCF7_0-2_th2.csv.gz
+        splits_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/l1000_mcf7_random_splits.pt
+      pcba_1328:
+        df_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/PCBA_1328_1564k.parquet
+        splits_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/pcba_1328_random_splits.pt
+      pcqm4m_g25:
+        df_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/PCQM4M_G25_N4.parquet
+        splits_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/pcqm4m_g25_n4_random_splits.pt
+      pcqm4m_n4:
+        df_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/PCQM4M_G25_N4.parquet
+        splits_path: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/large-dataset/pcqm4m_g25_n4_random_splits.pt
+
+trainer:
+  trainer:
+    accumulate_grad_batches: 8
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/largemix-dti/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/

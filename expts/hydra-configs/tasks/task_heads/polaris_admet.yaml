@@ -1,0 +1,22 @@
+# @package _global_
+
+# Task heads for the Polaris biogen/adme-fang-v1 benchmark suite.
+# All six endpoints are regression with a single scalar target.
+architecture:
+  task_heads:
+    adme_fang_hclint: &regression_head
+      task_level: graph
+      out_dim: 1
+      hidden_dims: 64
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: 0.5
+      normalization: "layer_norm"
+      last_normalization: "none"
+      residual_type: none
+    adme_fang_rclint: *regression_head
+    adme_fang_perm: *regression_head
+    adme_fang_hppb: *regression_head
+    adme_fang_rppb: *regression_head
+    adme_fang_solu: *regression_head

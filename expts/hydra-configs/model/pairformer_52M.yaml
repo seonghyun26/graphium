@@ -1,0 +1,32 @@
+# @package _global_
+# Pairformer Large (~52M parameters)
+# Matches Boltz2 dimensions but with 16 layers instead of 48.
+# Good balance between capacity and training speed.
+
+defaults:
+  - pairformer
+
+architecture:
+  pre_nn:
+    out_dim: 384
+    hidden_dims: 384
+
+  gnn:
+    in_dim: 384
+    out_dim: 384
+    hidden_dims: 384
+    depth: 16
+    layer_kwargs:
+      pair_dim: 128              # Boltz2 pair track dimension
+      num_heads: 8               # 384/8 = 48 head dim
+      pairwise_head_width: 32
+      pairwise_num_heads: 4
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      use_checkpoint: true
+
+  graph_output_nn:
+    graph:
+      hidden_dims: 384
+      out_dim: 1024

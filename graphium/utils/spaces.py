@@ -21,6 +21,7 @@ import graphium.nn.ensemble_layers as EnsembleLayers
 import graphium.nn.architectures as Architectures
 import graphium.utils.custom_lr as CustomLR
 import graphium.data.datamodule as Datamodules
+import graphium.data.belka_datamodule as BelkaDatamodules
 import graphium.ipu.ipu_losses as IPULosses
 import graphium.ipu.ipu_metrics as Metrics
 import graphium.nn.pyg_layers as PygLayers
@@ -55,6 +56,8 @@ PYG_LAYERS_DICT = {
     "pyg:dimenet": PygLayers.DimeNetPyg,
     "pyg:mpnnplus": PygLayers.MPNNPlusPyg,
     "pyg:pairformer": PygLayers.PairformerLayerPyg,
+    "pyg:pairmixer": PygLayers.PairMixerLayerPyg,
+    "pyg:pairmixerpp": PygLayers.PairMixerPPLayerPyg,
 }
 
 LAYERS_DICT = deepcopy(FC_LAYERS_DICT)
@@ -98,6 +101,7 @@ SCHEDULER_DICT = {
     "StepLR": sc.StepLR,
     "ConstantLR": sc.ConstantLR,
     "WarmUpLinearLR": CustomLR.WarmUpLinearLR,
+    "WarmUpCosineAnnealingLR": CustomLR.WarmUpCosineAnnealingLR,
 }
 
 METRICS_CLASSIFICATION = {
@@ -134,6 +138,7 @@ METRICS_REGRESSION = {
     "r2_score_ipu": Metrics.r2_score_ipu,
     "mae_ipu": Metrics.mean_absolute_error_ipu,
     "mse_ipu": Metrics.mean_squared_error_ipu,
+    "concordance_index_ipu": Metrics.concordance_index_ipu,
 }
 
 METRICS_DICT = deepcopy(METRICS_CLASSIFICATION)
@@ -144,6 +149,8 @@ DATAMODULE_DICT = {
     "GraphOGBDataModule": Datamodules.GraphOGBDataModule,
     "MultitaskFromSmilesDataModule": Datamodules.MultitaskFromSmilesDataModule,
     "ADMETBenchmarkDataModule": Datamodules.ADMETBenchmarkDataModule,
+    "PolarisADMETBenchmarkDataModule": Datamodules.PolarisADMETBenchmarkDataModule,
+    "BelkaBenchmarkDataModule": BelkaDatamodules.BelkaBenchmarkDataModule,
     "FakeDataModule": Datamodules.FakeDataModule,
 }
 

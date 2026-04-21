@@ -762,3 +762,150 @@ class DropPath(nn.Module):
         else:
             out = input
         return out
+
+
+class MoELayer(nn.Module):
+    """Mixture-of-Experts wrapper with graph-level routing.
+
+    Wraps N copies of an expert module (any nn.Module with matching
+    input/output dims). Each graph in the batch is routed to top-k
+    experts based on its mean-pooled features.  All nodes within a
+    graph go to the same experts, preserving molecular coherence.
+
+    Can be used as a drop-in replacement for any feed-forward layer
+    in GNN architectures (Pairformer transition, GPS++ FFN, etc.).
+
+    Parameters
+    ----------
+    expert_cls : type
+        The class to instantiate for each expert (e.g., an MLP module).
+    expert_kwargs : dict
+        Keyword arguments passed to ``expert_cls(**expert_kwargs)``
+        for each expert.
+    router_dim : int
+        Dimension of the input used for routing (typically the feature dim).
+    num_experts : int
+        Number of expert modules.
+    top_k : int
+        Number of experts each graph is routed to (outputs are weighted-summed).
+    aux_loss_coeff : float
+        Coefficient for the load-balancing auxiliary loss.
+    """
+
+    def __init__(
+        self,
+        expert_cls: type,
+        expert_kwargs: dict,
+        router_dim: int,
+        num_experts: int = 4,
+        top_k: int = 2,
+        aux_loss_coeff: float = 0.01,
+    ) -> None:
+        super().__init__()
+        self.num_experts = num_experts
+        self.top_k = min(top_k, num_experts)
+        self.aux_loss_coeff = aux_loss_coeff
+
+        self.experts = nn.ModuleList([
+            expert_cls(**expert_kwargs) for _ in range(num_experts)
+        ])
+        # Raw parameter instead of nn.Linear to avoid mup's
+        # assert_hidden_size_inf — the router projects from a width-scaled
+        # dim (infinite under mup) to a fixed num_experts dim.
+        self.router_weight = nn.Parameter(torch.empty(num_experts, router_dim))
+        nn.init.trunc_normal_(self.router_weight, std=0.01)
+
+        # Accumulated aux loss — read by the training loop
+        self.aux_loss: Tensor = torch.tensor(0.0)
+
+    def forward(self, x: Tensor, node_mask: Optional[Tensor] = None,
+                batch_idx: Optional[Tensor] = None) -> Tensor:
+        """
+        Parameters
+        ----------
+        x : Tensor
+            Dense (B, N, D) or sparse (total_N, D) node features.
+        node_mask : Tensor (B, N), optional
+            For dense input: 1 = valid, 0 = padding. Used for masked mean pool.
+        batch_idx : Tensor (total_N,), optional
+            For sparse input: graph index for each node.
+
+        Returns
+        -------
+        Tensor — same shape as x
+        """
+        sparse_mode = (x.dim() == 2 and batch_idx is not None)
+
+        if sparse_mode:
+            return self._forward_sparse(x, batch_idx)
+        else:
+            return self._forward_dense(x, node_mask)
+
+    def _forward_dense(self, x: Tensor, node_mask: Optional[Tensor] = None) -> Tensor:
+        """Dense path: x is (B, N, D)."""
+        B, N, D = x.shape
+
+        if node_mask is not None:
+            mask_f = node_mask.unsqueeze(-1)
+            mask_sum = mask_f.sum(dim=1).clamp(min=1)
+            graph_feats = (x * mask_f).sum(dim=1) / mask_sum
+        else:
+            graph_feats = x.mean(dim=1)
+
+        router_logits = F.linear(graph_feats, self.router_weight)
+        router_probs = router_logits.softmax(dim=-1)
+        top_weights, top_indices = router_probs.topk(self.top_k, dim=-1)
+        top_weights = top_weights / top_weights.sum(dim=-1, keepdim=True)
+
+        self._compute_aux_loss(router_probs, top_indices)
+
+        out = torch.zeros_like(x)
+        for k in range(self.top_k):
+            expert_ids = top_indices[:, k]
+            weights_k = top_weights[:, k]
+            for e in range(self.num_experts):
+                graph_mask = (expert_ids == e)
+                if not graph_mask.any():
+                    continue
+                x_e = x[graph_mask]
+                expert_out = self.experts[e](x_e)
+                w = weights_k[graph_mask].unsqueeze(-1).unsqueeze(-1)
+                out[graph_mask] = out[graph_mask] + w * expert_out
+        return out
+
+    def _forward_sparse(self, x: Tensor, batch_idx: Tensor) -> Tensor:
+        """Sparse path: x is (total_N, D), batch_idx is (total_N,)."""
+        from torch_scatter import scatter_mean
+
+        num_graphs = int(batch_idx.max()) + 1
+        graph_feats = scatter_mean(x, batch_idx, dim=0, dim_size=num_graphs)
+
+        router_logits = F.linear(graph_feats, self.router_weight)
+        router_probs = router_logits.softmax(dim=-1)
+        top_weights, top_indices = router_probs.topk(self.top_k, dim=-1)
+        top_weights = top_weights / top_weights.sum(dim=-1, keepdim=True)
+
+        self._compute_aux_loss(router_probs, top_indices)
+
+        # Expand graph-level routing to node level
+        node_top_weights = top_weights[batch_idx]   # (total_N, top_k)
+        node_top_indices = top_indices[batch_idx]    # (total_N, top_k)
+
+        out = torch.zeros_like(x)
+        for k in range(self.top_k):
+            expert_ids = node_top_indices[:, k]
+            weights_k = node_top_weights[:, k]
+            for e in range(self.num_experts):
+                node_mask = (expert_ids == e)
+                if not node_mask.any():
+                    continue
+                x_e = x[node_mask]
+                expert_out = self.experts[e](x_e)
+                out[node_mask] = out[node_mask] + weights_k[node_mask].unsqueeze(-1) * expert_out
+        return out
+
+    def _compute_aux_loss(self, router_probs: Tensor, top_indices: Tensor) -> None:
+        one_hot = F.one_hot(top_indices, self.num_experts).float().sum(dim=1)
+        fraction = one_hot.mean(dim=0)
+        mean_prob = router_probs.mean(dim=0)
+        self.aux_loss = self.aux_loss_coeff * self.num_experts * (fraction * mean_prob).sum()

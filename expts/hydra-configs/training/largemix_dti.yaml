@@ -1,0 +1,30 @@
+# @package _global_
+
+predictor:
+  random_seed: ${constants.seed}
+  optim_kwargs:
+    lr: 4.e-5
+  torch_scheduler_kwargs:
+    module_type: WarmUpLinearLR
+    max_num_epochs: ${constants.max_epochs}
+    warmup_epochs: 10
+    verbose: False
+  scheduler_kwargs: null
+  target_nan_mask: null
+  multitask_handling: flatten
+
+trainer:
+  seed: ${constants.seed}
+  logger:
+    save_dir: logs/largemix-dti/
+    name: ${constants.name}
+    project: ${constants.name}
+  model_checkpoint:
+    dirpath: model_checkpoints/largemix-dti/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: ${constants.name}
+    save_last: True
+  trainer:
+    precision: 16-mixed
+    max_epochs: ${constants.max_epochs}
+    min_epochs: 1
+    check_val_every_n_epoch: 10

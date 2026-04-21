@@ -1,0 +1,25 @@
+# @package _global_
+
+# PairMixer Large (~40M params) with the ToyMix + BBBC047 dataset.
+constants:
+  name: toymix_bbbc047_pairmixer_40M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_bbbc047/
+
+datamodule:
+  args:
+    batch_size_training: 6       # halved from bs=12 after OOM; bbbc047 head is heavier than pure out_dim scaling predicts
+    batch_size_inference: 6
+    num_workers: 4               # disk loading w/ workers is faster than ram+workers=0 here
+    persistent_workers: true
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_bbbc047/pairmixer_40M/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed        # PairMixer triangle ops overflow fp16; bf16 has float32-range exponents
+    accumulate_grad_batches: 4   # effective batch = 24 (per-step bs quartered vs. original 28)

@@ -99,9 +99,9 @@ datamodule:
         split_test: 0.1
         seed: 0
         task_level: graph
-        # label_normalization:
-        #   normalize_val_test: True
-        #   method: "normal"
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
       l1000_vcap:
         df: null
         df_path: ./data/graphium/neurips2023/large-dataset/LINCS_L1000_VCAP_0-2_th2.csv.gz

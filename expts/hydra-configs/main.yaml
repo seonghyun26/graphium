@@ -3,6 +3,9 @@ defaults:
   # Accelerators
   - accelerator: cpu
 
+  # Downstream linear-probe monitor (task configs can disable with probe.enabled=false)
+  - probe: admet_linear
+
   # Pre-training/fine-tuning
   - architecture: toymix
   - tasks: toymix
@@ -17,6 +20,7 @@ defaults:
 
 constants:
   seed: 0
+  norm: layer_norm
   wandb:
     entity: eddy26
     save_dir: null

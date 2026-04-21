@@ -1,0 +1,65 @@
+# @package _global_
+
+# Fine-tuning appendum for BELKA downstream evaluation (toymix/zinc pretraining).
+# Each of the three targets is fine-tuned separately (selected via constants.task).
+
+defaults:
+  - override /tasks/loss_metrics_datamodule: belka
+
+constants:
+  task: belka_brd4
+  name: finetuning_${constants.task}_toymix
+  wandb:
+    name: ${constants.name}
+    project: ${constants.task}
+    entity: multitask-gnn
+  seed: 42
+  max_epochs: 20
+  raise_train_error: false
+  datacache_path: /home/shpark/prj-molrepr/datacache/belka/${constants.task}
+
+predictor:
+  optim_kwargs:
+    lr: 1.e-4
+  torch_scheduler_kwargs:
+    module_type: CosineAnnealingLR
+    T_max: ${constants.max_epochs}
+    eta_min: 1.0e-6
+
+datamodule:
+  args:
+    num_workers: 0
+    featurization_n_jobs: 0
+    # Map `constants.task` (e.g. belka_brd4) -> target short name (brd4) externally.
+    # The script passes `++datamodule.args.belka_targets=${target}` explicitly.
+
+trainer:
+  model_checkpoint:
+    save_last: false
+
+finetuning:
+  task: ${constants.task}
+  level: graph
+
+  pretrained_model: dummy-pretrained-model
+  finetuning_module: task_heads
+  sub_module_from_pretrained: zinc
+  new_sub_module: ${constants.task}
+
+  drop_depth: 1
+  new_out_dim: 8
+  added_depth: 2
+
+  unfreeze_pretrained_depth: 0
+  epoch_unfreeze_all: 10
+
+  finetuning_head:
+    task: ${constants.task}
+    previous_module: task_heads
+    incoming_level: graph
+    model_type: mlp
+    in_dim: 8
+    out_dim: 1
+    hidden_dims: 8
+    depth: 2
+    last_layer_is_readout: true

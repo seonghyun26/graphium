@@ -1,0 +1,33 @@
+# @package _global_
+# PairMixer 12M for the DTI downstream-eval flow.
+# Mirrors toymix_dti_esmc_v2_pairmixer_12M.yaml's structure but writes
+# checkpoints under models_checkpoints/dti-eval/ to keep eval runs separate
+# from pretraining artifacts. The encoder is frozen during these runs (see
+# expts/hydra-configs/finetuning/dti_eval.yaml), so this file only sets
+# data-loader / trainer knobs that affect the head's training loop.
+
+constants:
+  name: dti_eval_${constants.dti_subset}_${constants.dti_split_method}_seed${constants.seed}_pairmixer_12M
+  seed: 42
+  max_epochs: 100
+  raise_train_error: false
+  datacache_path: /home/shpark/prj-molrepr/datacache/dti-eval/${constants.dti_subset}/
+
+datamodule:
+  args:
+    # 1152-d prot_emb aux input per sample fans into the head -> halve the
+    # training batch (matches dti_pactivity_pairmixer_20M.yaml's OOM-driven sizing).
+    # Inference can stay larger since no gradients are kept.
+    batch_size_training: 16
+    batch_size_inference: 32
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/dti-eval/${constants.dti_subset}/${constants.dti_split_method}/seed${constants.seed}/pairmixer_12M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+  trainer:
+    precision: bf16-mixed
+    accumulate_grad_batches: 4    # effective batch = 64 (bs 16 x 4)

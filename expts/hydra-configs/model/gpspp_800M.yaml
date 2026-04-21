@@ -5,13 +5,10 @@
 defaults:
   - gpspp
 
-# Keep working directory at project root so relative data paths resolve correctly
+# Per-run output directory (prevents overwriting); data paths use absolute paths
 hydra:
   run:
-    dir: .
-
-constants:
-  norm: layer_norm
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
 
 datamodule:
   args:
@@ -35,3 +32,7 @@ architecture:
   graph_output_nn:
     graph:
       hidden_dims: 1536
+      out_dim: 1024
+    node:
+      hidden_dims: 1536
+      out_dim: 256

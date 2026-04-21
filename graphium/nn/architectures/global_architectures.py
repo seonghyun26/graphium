@@ -13,7 +13,8 @@ Refer to the LICENSE file for the full terms and conditions.
 
 from typing import Iterable, List, Dict, Literal, Tuple, Union, Callable, Any, Optional, Type
 from torch_geometric.data import Batch
-from graphium.ipu.to_dense_batch import to_dense_batch
+from torch_geometric.utils import to_dense_adj
+from graphium.ipu.to_dense_batch import to_dense_batch, to_sparse_batch
 from loguru import logger
 
 # Misc imports
@@ -957,6 +958,14 @@ class FeedForwardGraph(FeedForwardNN):
 
         self.first_normalization_edges = get_norm(first_normalization, dim=in_dim_edges)
 
+        # Layer indices whose per-layer `batch.pair_feat` should be cached
+        # onto the batch during the forward loop (see `forward`). Empty by
+        # default; populated by the parent wrapper (e.g.
+        # `FullGraphMultiTaskNetwork`) when `pair_layers_to_pool` is set in
+        # `graph_output_nn_kwargs` so that the head can concat multi-layer
+        # pair pools.
+        self._pair_capture_layers: set = set()
+
     def _check_bad_arguments(self):
         r"""
         Raise comprehensive errors if the arguments seem wrong
@@ -1284,6 +1293,20 @@ class FeedForwardGraph(FeedForwardNN):
             if self.cache_readouts:
                 self._readout_cache[ii] = feat
 
+            # Cache this layer's pair representation for multi-layer pair
+            # pooling at the head (requested via `pair_layers_to_pool`).
+            # `batch.pair_feat = z` in the pair layers is a reassignment
+            # (not in-place), so stashing the tensor ref here keeps it
+            # alive after the next layer reassigns the attr.
+            if self._pair_capture_layers and ii in self._pair_capture_layers:
+                z_cur = getattr(g, "pair_feat", None)
+                if z_cur is not None:
+                    stack = getattr(g, "pair_feat_stack", None)
+                    if stack is None:
+                        stack = {}
+                        g.pair_feat_stack = stack
+                    stack[ii] = z_cur
+
         g["feat"], g["edge_feat"] = feat, edge_feat
         return g
 
@@ -1348,8 +1371,56 @@ class FeedForwardGraph(FeedForwardNN):
         """
         class_str = f"{self.name}(depth={self.depth}, {self.residual_layer})\n    "
         layer_str = f"{self.layer_class.__name__}[{' -> '.join(map(str, self.full_dims))}]\n    "
+        pair_dim = self.layer_kwargs.get("pair_dim")
+        if pair_dim is not None:
+            layer_str += f"pair_dim={pair_dim}\n    "
 
         return class_str + layer_str
+
+
+class GNNLayerPooling(nn.Module):
+    """Combine intermediate GNN layer representations for downstream tasks.
+
+    Instead of using only the final GNN layer output, this module collects
+    outputs from specified intermediate layers and combines them. Inspired
+    by the multi-fingerprint probing approach from MolGPS.
+
+    Two combination modes:
+
+    - ``"weighted_sum"``: Learnable softmax-normalized scalar weights over
+      selected layer outputs.  Output dim equals ``gnn_dim`` (no change).
+    - ``"concat_proj"``: Concatenate selected layer outputs along the
+      feature dimension and project back to ``gnn_dim`` via a linear layer.
+
+    Parameters:
+        layers: GNN layer indices whose outputs to combine (0-indexed).
+        gnn_dim: Hidden dimension of each GNN layer output.
+        mode: ``"weighted_sum"`` or ``"concat_proj"``.
+    """
+
+    def __init__(self, layers: List[int], gnn_dim: int, mode: str = "weighted_sum"):
+        super().__init__()
+        self.layers = sorted(layers)
+        self.mode = mode
+        self.gnn_dim = gnn_dim
+        n_layers = len(self.layers)
+
+        if mode == "weighted_sum":
+            self.layer_weights = nn.Parameter(torch.zeros(n_layers))
+        elif mode == "concat_proj":
+            self.proj = nn.Linear(n_layers * gnn_dim, gnn_dim)
+        else:
+            raise ValueError(
+                f"Unknown gnn_layer_pooling mode: {mode!r}, expected 'weighted_sum' or 'concat_proj'"
+            )
+
+    def forward(self, readout_cache: Dict[int, Tensor]) -> Tensor:
+        layer_outputs = [readout_cache[i] for i in self.layers]
+        if self.mode == "weighted_sum":
+            weights = torch.softmax(self.layer_weights, dim=0)
+            return sum(w * out for w, out in zip(weights, layer_outputs))
+        else:  # concat_proj
+            return self.proj(torch.cat(layer_outputs, dim=-1))
 
 
 class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
@@ -1361,6 +1432,7 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
         pe_encoders_kwargs: Optional[Dict[str, Any]] = None,
         task_heads_kwargs: Optional[Dict[str, Any]] = None,
         graph_output_nn_kwargs: Optional[Dict[str, Any]] = None,
+        gnn_layer_pooling_kwargs: Optional[Dict[str, Any]] = None,
         accelerator_kwargs: Optional[Dict[str, Any]] = None,
         num_inference_to_average: int = 1,
         last_layer_is_readout: bool = False,
@@ -1402,6 +1474,17 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
                 This argument is a list of dictionaries corresponding to the arguments for a FeedForwardNN.
                 Each dict of arguments is used to initialize a shared MLP.
 
+            gnn_layer_pooling_kwargs:
+                Optional dictionary to enable multi-layer GNN representation pooling.
+                When set, intermediate GNN layer outputs are combined instead of
+                using only the final layer. Keys:
+
+                - ``layers``: list of GNN layer indices (0-indexed) to combine.
+                - ``mode``: ``"weighted_sum"`` (learnable scalar weights) or
+                  ``"concat_proj"`` (concatenation + linear projection).
+
+                If ``None``, the standard single-layer (last) output is used.
+
             accelerator_kwargs:
                 key-word arguments specific to the accelerator being used,
                 e.g. pipeline split points
@@ -1432,6 +1515,7 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
         self.max_num_nodes_per_graph = None
         self.max_num_edges_per_graph = None
         self._cache_readouts = False
+        self.gnn_layer_pooling_kwargs = gnn_layer_pooling_kwargs
 
         # Initialize the pre-processing neural net for nodes (applied directly on node features)
         if pre_nn_kwargs is not None:
@@ -1461,6 +1545,46 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
         )
         self.gnn = gnn_class(**gnn_kwargs, name=name)
         next_in_dim = self.gnn.out_dim
+
+        # Wire multi-layer pair pooling from the graph-level head config down
+        # into the GNN so the forward loop knows which layers' `pair_feat`
+        # tensors to stash onto the batch. Indices are normalised against
+        # the GNN depth so negative values (Python-style, -1 = last) work
+        # and the head reads the same canonical indices.
+        _graph_head_kwargs = {}
+        if graph_output_nn_kwargs is not None:
+            _graph_head_kwargs = graph_output_nn_kwargs.get("graph", {}) or {}
+        _pair_layers = _graph_head_kwargs.get("pair_layers_to_pool", None)
+        if _pair_layers:
+            gnn_depth = int(getattr(self.gnn, "depth", 0) or 0)
+            normalised: List[int] = []
+            for idx in _pair_layers:
+                idx = int(idx)
+                if idx < 0:
+                    idx = gnn_depth + idx
+                if idx < 0 or (gnn_depth and idx >= gnn_depth):
+                    raise ValueError(
+                        f"pair_layers_to_pool index {idx} out of range for GNN depth {gnn_depth}."
+                    )
+                normalised.append(idx)
+            if len(set(normalised)) != len(normalised):
+                raise ValueError(
+                    f"pair_layers_to_pool contains duplicates after normalisation: {normalised}"
+                )
+            # Propagate the normalised list back into the kwargs so the head
+            # reads the same indices the GNN cached.
+            _graph_head_kwargs["pair_layers_to_pool"] = normalised
+            self.gnn._pair_capture_layers = set(normalised)
+
+        # Initialize multi-layer GNN pooling (optional)
+        self.gnn_layer_pooling = None
+        if gnn_layer_pooling_kwargs is not None:
+            self.gnn_layer_pooling = GNNLayerPooling(
+                gnn_dim=self.gnn.out_dim,
+                **gnn_layer_pooling_kwargs,
+            )
+            # Enable readout cache so intermediate layer outputs are stored during forward
+            self.gnn._enable_readout_cache()
 
         if task_heads_kwargs is not None:
             self.task_heads = TaskHeads(
@@ -1705,6 +1829,10 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
         # Run the graph neural network
         g = self.gnn.forward(g)
 
+        # Combine intermediate GNN layer representations if configured
+        if self.gnn_layer_pooling is not None:
+            g["feat"] = self.gnn_layer_pooling(self.gnn._readout_cache)
+
         if self.task_heads is not None:
             return self.task_heads.forward(g)
 
@@ -1801,7 +1929,8 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
                     layer.max_num_nodes_per_graph = max_nodes
                     layer.max_num_edges_per_graph = max_edges
 
-        self.task_heads.set_max_num_nodes_edges_per_graph(max_nodes, max_edges)
+        if self.task_heads is not None:
+            self.task_heads.set_max_num_nodes_edges_per_graph(max_nodes, max_edges)
 
     def __repr__(self) -> str:
         r"""
@@ -1813,6 +1942,7 @@ class FullGraphMultiTaskNetwork(nn.Module, MupMixin):
         if self.pre_nn_edges is not None:
             pre_nn_edges_str = self.pre_nn_edges.__repr__() + "\n\n"
         gnn_str = self.gnn.__repr__() + "\n\n"
+        task_str = ""
         if self.task_heads is not None:
             task_str = self.task_heads.__repr__()
             task_str = "    Task heads:\n    " + "    ".join(task_str.splitlines(True))
@@ -1895,15 +2025,67 @@ class GraphOutputNN(nn.Module, MupMixin):
             "edge": "edge_feat",
         }
 
+        # Check if pair_dim is set for direct pair-feature pooling.
+        # When set (typically for PairMixer models), predictions are made
+        # from the pair representation z rather than node features:
+        #   graph-level: pool (B, N, N, D_z) → (B, D_z)       [pair_pool="mean"]
+        #                pool (B, N, N, D_z) → (B, 6*D_z)     [pair_pool="stats"]
+        #   node-level:  pool (B, N, N, D_z) → (total_nodes, D_z)
+        self.pair_dim = graph_output_nn_kwargs[self.task_level].get("pair_dim", None)
+
+        # Pooling mode for the pair track (graph-level only). "stats" computes
+        # graph-aware mean+std across three strata (diagonal, 1-hop, global),
+        # yielding 6 * pair_dim features. "mean" computes a simple masked mean,
+        # yielding pair_dim features (legacy behaviour).
+        # Default is "mean" for backward compat with checkpoints that predate
+        # the stats mode; new configs explicitly set pair_pool: stats.
+        self.pair_pool = graph_output_nn_kwargs[self.task_level].get("pair_pool", "mean")
+        if self.pair_pool not in ("mean", "stats"):
+            raise ValueError(
+                f"Invalid pair_pool={self.pair_pool!r}, must be 'mean' or 'stats'."
+            )
+        self._pair_pool_mult = 6 if self.pair_pool == "stats" else 1
+
+        # Optional multi-layer pair pooling: 0-indexed GNN layer indices whose
+        # cached `pair_feat` get pooled separately and concatenated along the
+        # feature axis before the head MLP. `None` (default) preserves the
+        # single-layer (final-`pair_feat`) behaviour. Negative indices are
+        # pre-normalised by the parent wrapper against the GNN depth.
+        _pl = graph_output_nn_kwargs[self.task_level].get("pair_layers_to_pool", None)
+        if _pl is not None:
+            _pl = list(_pl)
+            if len(_pl) == 0:
+                raise ValueError("pair_layers_to_pool must be non-empty if provided.")
+        self.pair_layers_to_pool = _pl
+        self._n_pair_layers = len(_pl) if _pl else 1
+
+        # Optional node-level pooling alongside pair pooling (e.g. max-pool
+        # over node embeddings concatenated with pair-stats features).
+        self.node_pool_layer = None
+        self._node_pool_dim = 0
+
         if self.task_level == "nodepair":
             level_in_dim = 2 * self.in_dim
         elif self.task_level == "edge":
             level_in_dim = self.in_dim_edges
         elif self.task_level == "graph":
-            self.global_pool_layer, self.out_pool_dim = self._parse_pooling_layer(
-                self.in_dim, graph_output_nn_kwargs[self.task_level]["pooling"]
-            )
-            level_in_dim = self.out_pool_dim
+            if self.pair_dim is not None:
+                level_in_dim = self.pair_dim * self._pair_pool_mult * self._n_pair_layers
+                # Optionally also pool node features alongside pair features
+                node_pooling = graph_output_nn_kwargs[self.task_level].get("node_pooling", None)
+                if node_pooling is not None:
+                    self.node_pool_layer, self._node_pool_dim = self._parse_pooling_layer(
+                        self.in_dim, node_pooling
+                    )
+                    level_in_dim += self._node_pool_dim
+            else:
+                self.global_pool_layer, self.out_pool_dim = self._parse_pooling_layer(
+                    self.in_dim, graph_output_nn_kwargs[self.task_level]["pooling"]
+                )
+                level_in_dim = self.out_pool_dim
+        elif self.task_level == "node" and self.pair_dim is not None:
+            # Node-level pair pooling always uses simple masked mean.
+            level_in_dim = self.pair_dim
         else:
             level_in_dim = self.in_dim
 
@@ -1912,7 +2094,11 @@ class GraphOutputNN(nn.Module, MupMixin):
         # Initialize the post-processing neural net (applied after the gnn)
         name = graph_output_nn_kwargs[self.task_level].pop("name", "post-NN")
         filtered_graph_output_nn_kwargs = {
-            k: v for k, v in graph_output_nn_kwargs[self.task_level].items() if k not in ["pooling", "in_dim"]
+            k: v for k, v in graph_output_nn_kwargs[self.task_level].items()
+            if k not in [
+                "pooling", "in_dim", "pair_dim", "pair_pool",
+                "node_pooling", "pair_layers_to_pool",
+            ]
         }
         self.graph_output_nn = FeedForwardNN(
             in_dim=level_in_dim, name=name, **filtered_graph_output_nn_kwargs
@@ -1935,10 +2121,27 @@ class GraphOutputNN(nn.Module, MupMixin):
             )
         # Check if at least one graph-level task is present
         if self.task_level == "graph":
-            # pool features if the level is graph
-            g["graph_feat"] = self._pool_layer_forward(g, g["feat"])
+            if self.pair_dim is not None and hasattr(g, "pair_feat") and g.pair_feat is not None:
+                if self.pair_layers_to_pool is not None:
+                    pair_out = self._pool_pair_multilayer(g)
+                elif self.pair_pool == "stats":
+                    pair_out = self._pool_pair_stats(g)
+                else:
+                    pair_out = self._pool_pair_feat(g)
+                if self.node_pool_layer is not None:
+                    node_out = self.node_pool_layer(g, g["feat"])
+                    g["graph_feat"] = torch.cat([pair_out, node_out], dim=-1)
+                else:
+                    g["graph_feat"] = pair_out
+            else:
+                g["graph_feat"] = self._pool_layer_forward(g, g["feat"])
 
-        h = g[self.map_task_level[self.task_level]]
+        # Resolve features for this task level
+        _has_pair = self.pair_dim is not None and hasattr(g, "pair_feat") and g.pair_feat is not None
+        if self.task_level == "node" and _has_pair:
+            h = self._pool_pair_to_node(g)
+        else:
+            h = g[self.map_task_level[self.task_level]]
         # Run the output network
         if self.concat_last_layers is None:
             h = self.graph_output_nn.forward(h)
@@ -2013,6 +2216,168 @@ class GraphOutputNN(nn.Module, MupMixin):
             pooled_feat = feat
 
         return pooled_feat
+
+    def _pool_pair_feat(self, g: Batch) -> torch.Tensor:
+        r"""Pool pair representation to graph-level features.
+
+        Computes a masked mean of ``g.pair_feat`` over both spatial
+        dimensions, yielding one vector per graph.
+
+        Parameters:
+            g: pyg Batch graph with ``pair_feat`` (B, N, N, D_z) and
+               ``pair_mask`` (B, N, N) attributes.
+
+        Returns:
+            torch.Tensor of shape (num_graphs, D_z).
+        """
+        z = g.pair_feat          # (B, N, N, D_z) — dense
+        mask = g.pair_mask       # (B, N, N) — 1=valid, 0=padding
+        mask_sum = mask.sum(dim=(1, 2), keepdim=True).clamp(min=1)  # (B, 1, 1)
+        graph_feat = (z * mask.unsqueeze(-1)).sum(dim=(1, 2)) / mask_sum.squeeze(-1)
+        return graph_feat        # (B, D_z)
+
+    def _pool_pair_to_node(self, g: Batch) -> torch.Tensor:
+        r"""Pool pair representation to node-level features.
+
+        Computes a masked mean of ``g.pair_feat`` over the neighbor (j)
+        dimension, yielding one vector per node, then converts back to
+        sparse format.
+
+        Parameters:
+            g: pyg Batch graph with ``pair_feat`` (B, N, N, D_z),
+               ``pair_mask`` (B, N, N), and ``_pair_dense_idx`` attributes.
+
+        Returns:
+            torch.Tensor of shape (total_nodes, D_z).
+        """
+        z = g.pair_feat          # (B, N, N, D_z) — dense
+        mask = g.pair_mask       # (B, N, N) — 1=valid, 0=padding
+        mask_j = mask.sum(dim=-1, keepdim=True).clamp(min=1)  # (B, N, 1)
+        node_feat = (z * mask.unsqueeze(-1)).sum(dim=2) / mask_j  # (B, N, D_z)
+        return to_sparse_batch(node_feat, mask_idx=g._pair_dense_idx)  # (total_nodes, D_z)
+
+    def _build_pair_strata_masks(
+        self, g: Batch
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        r"""Build the three stratum masks used by graph-aware stats pooling.
+
+        Each mask is the AND of the stratum-specific selector with
+        ``g.pair_mask`` so padding pairs are always zero.
+
+        Parameters:
+            g: pyg Batch with ``pair_mask`` (B, N, N), ``batch``
+               (total_nodes,), and ``edge_index`` (2, num_edges).
+
+        Returns:
+            Tuple of three (B, N, N) tensors matching ``pair_mask`` dtype:
+              - ``mask_diag``:  1 on valid self-pairs (i==j).
+              - ``mask_1hop``:  1 on valid bonded pairs.
+              - ``mask_global``: 1 on any valid pair (same as ``pair_mask``).
+        """
+        pair_mask = g.pair_mask                         # (B, N, N)
+        _, N, _ = pair_mask.shape
+        device = pair_mask.device
+        dtype = pair_mask.dtype
+
+        # Diagonal: identity broadcast, masked by validity.
+        eye = torch.eye(N, device=device, dtype=dtype).unsqueeze(0)  # (1, N, N)
+        mask_diag = eye * pair_mask
+
+        # 1-hop: dense adjacency from edge_index, automatically aligned with
+        # pair_mask because both use the same batch vector.  Graphium's
+        # featurizer emits both directions of every bond, so the adjacency
+        # is already symmetric.
+        adj = to_dense_adj(
+            g.edge_index, batch=g.batch, max_num_nodes=N,
+        ).to(dtype=dtype)                                            # (B, N, N)
+        mask_1hop = (adj > 0).to(dtype=dtype) * pair_mask
+
+        return mask_diag, mask_1hop, pair_mask
+
+    def _pool_pair_stats(self, g: Batch) -> torch.Tensor:
+        r"""Graph-aware statistics pooling of the pair representation.
+
+        Stratifies the pair tensor into three groups — diagonal (i==j),
+        1-hop (bonded pairs), and global (all valid pairs) — and computes
+        the mean and standard deviation of each stratum.  The six resulting
+        (B, D_z) tensors are concatenated along the feature axis, giving a
+        (B, 6 * D_z) output ordered as
+        ``[mean_diag, mean_1hop, mean_global, std_diag, std_1hop, std_global]``.
+
+        The std uses the numerically stable identity
+        ``var = E[x**2] - E[x]**2`` with a ``clamp(min=1e-6)`` before
+        ``sqrt``.  Empty strata (e.g., a single-atom graph has no 1-hop
+        pairs) yield zero mean and zero std via a per-graph availability
+        gate.
+
+        Parameters:
+            g: pyg Batch with ``pair_feat`` (B, N, N, D_z), ``pair_mask``,
+               ``edge_index``, and ``batch``.
+
+        Returns:
+            torch.Tensor of shape (num_graphs, 6 * D_z).
+        """
+        z = g.pair_feat                                 # (B, N, N, D_z)
+        z2 = z * z
+
+        mask_diag, mask_1hop, mask_global = self._build_pair_strata_masks(g)
+
+        def _stratum_stats(mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+            m4 = mask.unsqueeze(-1)                     # (B, N, N, 1)
+            raw_count = mask.sum(dim=(1, 2))            # (B,)
+            count = raw_count.clamp(min=1.0).unsqueeze(-1)  # (B, 1)
+            sum_z = (z * m4).sum(dim=(1, 2))            # (B, D_z)
+            sum_z2 = (z2 * m4).sum(dim=(1, 2))          # (B, D_z)
+            mean = sum_z / count
+            mean_sq = sum_z2 / count
+            var = (mean_sq - mean * mean).clamp(min=1e-6)
+            std = var.sqrt()
+            has_any = (raw_count > 0).to(z.dtype).unsqueeze(-1)  # (B, 1)
+            return mean * has_any, std * has_any
+
+        mean_diag,   std_diag   = _stratum_stats(mask_diag)
+        mean_1hop,   std_1hop   = _stratum_stats(mask_1hop)
+        mean_global, std_global = _stratum_stats(mask_global)
+
+        return torch.cat(
+            [mean_diag, mean_1hop, mean_global, std_diag, std_1hop, std_global],
+            dim=-1,
+        )                                                # (B, 6 * D_z)
+
+    def _pool_pair_multilayer(self, g: Batch) -> torch.Tensor:
+        r"""Pool the pair representation from multiple GNN layers and concat.
+
+        For each index in ``self.pair_layers_to_pool`` the corresponding
+        cached layer output is read from ``g.pair_feat_stack``, temporarily
+        swapped onto ``g.pair_feat`` so the existing ``_pool_pair_stats`` /
+        ``_pool_pair_feat`` routines (which rely on the mask / edge_index
+        attributes of ``g``) can be reused, then the pooled vector is
+        appended. The original ``g.pair_feat`` is restored after each pool.
+
+        The last GNN layer is always available via ``g.pair_feat`` itself,
+        so we fall back to it for any requested index not present in the
+        stack (which happens when the index equals ``depth - 1`` because
+        that tensor is also already in ``g.pair_feat`` — cheap sanity).
+
+        Returns:
+            torch.Tensor of shape ``(num_graphs, n_layers * mult * D_z)``
+            where ``mult = 6`` for ``pair_pool="stats"`` and ``1`` for
+            ``pair_pool="mean"``.
+        """
+        stack = getattr(g, "pair_feat_stack", None) or {}
+        saved_z = g.pair_feat
+        try:
+            pooled_parts = []
+            for idx in self.pair_layers_to_pool:
+                z_layer = stack.get(idx, saved_z)
+                g.pair_feat = z_layer
+                if self.pair_pool == "stats":
+                    pooled_parts.append(self._pool_pair_stats(g))
+                else:
+                    pooled_parts.append(self._pool_pair_feat(g))
+        finally:
+            g.pair_feat = saved_z
+        return torch.cat(pooled_parts, dim=-1)
 
     def compute_nodepairs(
         self,
@@ -2208,8 +2573,10 @@ class TaskHeads(nn.Module, MupMixin):
             head_kwargs.setdefault("last_layer_is_readout", last_layer_is_readout)
             # Create a new dictionary without the task_level key-value pair,
             # and pass it while initializing the FeedForwardNN instance for tasks
-            filtered_kwargs = {k: v for k, v in head_kwargs.items() if k != "task_level"}
-            filtered_kwargs["in_dim"] = self.graph_output_nn_kwargs[task_level]["out_dim"]
+            non_ff_keys = {"task_level", "aux_in_dim", "aux_label_split"}
+            filtered_kwargs = {k: v for k, v in head_kwargs.items() if k not in non_ff_keys}
+            aux_in_dim = head_kwargs.get("aux_in_dim", 0)
+            filtered_kwargs["in_dim"] = self.graph_output_nn_kwargs[task_level]["out_dim"] + aux_in_dim
             self.task_heads[task_name] = FeedForwardNN(**filtered_kwargs)
 
     def forward(self, g: Batch) -> Dict[str, torch.Tensor]:
@@ -2227,7 +2594,12 @@ class TaskHeads(nn.Module, MupMixin):
             task_level = self.task_heads_kwargs[task_name].get(
                 "task_level", None
             )  # Get task_level without modifying head_kwargs
-            task_head_outputs[task_name] = head.forward(features[task_level])
+            feat = features[task_level]
+            # Concatenate auxiliary features (e.g., protein embeddings) if present
+            aux_key = f"aux_{task_name}"
+            if hasattr(g, aux_key) and getattr(g, aux_key) is not None:
+                feat = torch.cat([feat, getattr(g, aux_key)], dim=-1)
+            task_head_outputs[task_name] = head.forward(feat)
 
         return task_head_outputs
 
@@ -2258,6 +2630,9 @@ class TaskHeads(nn.Module, MupMixin):
                 divide_factor=divide_factor, factor_in_dim=factor_in_dim
             )
             task_heads_kwargs[task_name]["task_level"] = self.task_heads_kwargs[task_name]["task_level"]
+            for aux_key in ("aux_in_dim", "aux_label_split"):
+                if aux_key in self.task_heads_kwargs[task_name]:
+                    task_heads_kwargs[task_name][aux_key] = self.task_heads_kwargs[task_name][aux_key]
         kwargs = dict(
             in_dim=self.in_dim,
             last_layer_is_readout=self.last_layer_is_readout,

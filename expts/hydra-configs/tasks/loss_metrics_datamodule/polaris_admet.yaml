@@ -1,0 +1,80 @@
+# @package _global_
+
+# Loss / metrics / datamodule spec for the Polaris biogen/adme-fang-v1 benchmark suite.
+# Metrics mirror the Polaris benchmark definition (main metric: pearsonr) across all six
+# single-task regression benchmarks. "explained_var" from Polaris is omitted (no graphium
+# equivalent); every other metric maps one-to-one.
+
+predictor:
+  metrics_on_progress_bar:
+    adme_fang_hclint: ["pearsonr"]
+    adme_fang_rclint: ["pearsonr"]
+    adme_fang_perm: ["pearsonr"]
+    adme_fang_hppb: ["pearsonr"]
+    adme_fang_rppb: ["pearsonr"]
+    adme_fang_solu: ["pearsonr"]
+  loss_fun:
+    adme_fang_hclint: mae
+    adme_fang_rclint: mae
+    adme_fang_perm: mae
+    adme_fang_hppb: mae
+    adme_fang_rppb: mae
+    adme_fang_solu: mae
+  random_seed: ${constants.seed}
+  optim_kwargs:
+    lr: 4.e-5
+  torch_scheduler_kwargs:
+    module_type: WarmUpLinearLR
+    max_num_epochs: &max_epochs 100
+    warmup_epochs: 10
+    verbose: False
+  target_nan_mask: null
+  multitask_handling: flatten
+
+metrics:
+  adme_fang_hclint: &polaris_regression_metrics
+    - name: mae
+      metric: mae
+      target_nan_mask: null
+      multitask_handling: flatten
+      threshold_kwargs: null
+    - name: mse
+      metric: mse
+      target_nan_mask: null
+      multitask_handling: flatten
+      threshold_kwargs: null
+    - name: r2_score
+      metric: r2_score
+      target_nan_mask: null
+      multitask_handling: mean-per-label
+      threshold_kwargs: null
+    - name: spearmanr
+      metric: spearmanr
+      target_nan_mask: null
+      multitask_handling: mean-per-label
+      threshold_kwargs: null
+    - name: pearsonr
+      metric: pearsonr
+      target_nan_mask: null
+      multitask_handling: mean-per-label
+      threshold_kwargs: null
+  adme_fang_rclint: *polaris_regression_metrics
+  adme_fang_perm: *polaris_regression_metrics
+  adme_fang_hppb: *polaris_regression_metrics
+  adme_fang_rppb: *polaris_regression_metrics
+  adme_fang_solu: *polaris_regression_metrics
+
+datamodule:
+  module_type: "PolarisADMETBenchmarkDataModule"
+  args:
+    polaris_benchmark_names: null
+    tdc_train_val_seed: ${constants.seed}
+    polaris_cache_dir: /home/shpark/prj-molrepr/datacache/polaris_adme_fang
+    processed_graph_data_path: null
+
+constants:
+  raise_train_error: false
+
+trainer:
+  model_checkpoint:
+    save_last: false

@@ -1,0 +1,166 @@
+# @package _global_
+#
+# ToyMix (qm9 + tox21 + zinc) + DTI pActivity (protein-label pre-training).
+# Replaces the old DTI embedding-reconstruction task with supervised pActivity prediction:
+#   MLP(GNN(molecule) || prot_emb_1152) -> pY
+
+datamodule:
+  args:
+    task_specific_args:
+      dti_pactivity:
+        df_path: data/dti-processed/dti_pactivity_esmc_100k.csv
+        smiles_col: "SMILES_nometa"
+        label_cols: null  # pY + prot_emb_0..prot_emb_1151
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
+      qm9:
+        df: null
+        df_path: ${constants.data_dir}/qm9.csv
+        smiles_col: "smiles"
+        label_cols: ["A", "B", "C", "mu", "alpha", "homo", "lumo", "gap", "r2", "zpve", "u0", "u298", "h298", "g298", "cv", "u0_atom", "u298_atom", "h298_atom", "g298_atom"]
+        splits_path: ${constants.data_dir}/qm9_random_splits.pt
+        seed: ${constants.seed}
+        task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
+      tox21:
+        df: null
+        df_path: ${constants.data_dir}/Tox21-7k-12-labels.csv
+        smiles_col: "smiles"
+        label_cols: ["NR-AR", "NR-AR-LBD", "NR-AhR", "NR-Aromatase", "NR-ER", "NR-ER-LBD", "NR-PPAR-gamma", "SR-ARE", "SR-ATAD5", "SR-HSE", "SR-MMP", "SR-p53"]
+        splits_path: ${constants.data_dir}/Tox21_random_splits.pt
+        seed: ${constants.seed}
+        task_level: graph
+      zinc:
+        df: null
+        df_path: ${constants.data_dir}/ZINC12k.csv
+        smiles_col: "smiles"
+        label_cols: ["SA", "logp", "score"]
+        splits_path: ${constants.data_dir}/ZINC12k_random_splits.pt
+        seed: ${constants.seed}
+        task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
+
+architecture:
+  task_heads:
+    dti_pactivity:
+      task_level: graph
+      out_dim: 1
+      hidden_dims: 256
+      depth: 2
+      activation: relu
+      last_activation: none
+      aux_in_dim: 1152
+      aux_label_split: 1
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
+    qm9:
+      task_level: graph
+      out_dim: 19
+      hidden_dims: 128
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
+    tox21:
+      task_level: graph
+      out_dim: 12
+      hidden_dims: 64
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
+    zinc:
+      task_level: graph
+      out_dim: 3
+      hidden_dims: 32
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
+
+predictor:
+  aux_label_splits:
+    dti_pactivity: 1
+  metrics_on_progress_bar:
+    dti_pactivity: ['mae']
+    qm9: ["mae"]
+    tox21: ["auroc"]
+    zinc: ["mae"]
+  metrics_on_training_set:
+    dti_pactivity: ['mae']
+    qm9: []
+    tox21: []
+    zinc: []
+  loss_fun:
+    dti_pactivity: mae_ipu
+    qm9: mae_ipu
+    tox21: bce_logits_ipu
+    zinc: mae_ipu
+
+metrics:
+  dti_pactivity:
+  - name: mae
+    metric: mae_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu
+  qm9: &qm9_metrics
+    - name: mae
+      metric: mae_ipu
+      target_nan_mask: null
+      multitask_handling: flatten
+      threshold_kwargs: null
+    - name: pearsonr
+      metric: pearsonr_ipu
+      threshold_kwargs: null
+      target_nan_mask: null
+      multitask_handling: mean-per-label
+    - name: r2_score
+      metric: r2_score_ipu
+      target_nan_mask: null
+      multitask_handling: mean-per-label
+      threshold_kwargs: null
+  tox21:
+    - name: auroc
+      metric: auroc_ipu
+      task: binary
+      multitask_handling: mean-per-label
+      threshold_kwargs: null
+    - name: avpr
+      metric: average_precision_ipu
+      task: binary
+      multitask_handling: mean-per-label
+      threshold_kwargs: null
+    - name: f1 > 0.5
+      metric: f1
+      multitask_handling: mean-per-label
+      target_to_int: True
+      num_classes: 2
+      average: micro
+      threshold_kwargs: &threshold_05
+        operator: greater
+        threshold: 0.5
+        th_on_preds: True
+        th_on_target: True
+    - name: precision > 0.5
+      metric: precision
+      multitask_handling: mean-per-label
+      average: micro
+      threshold_kwargs: *threshold_05
+  zinc: *qm9_metrics

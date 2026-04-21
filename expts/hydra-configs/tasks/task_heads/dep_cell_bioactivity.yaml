@@ -1,0 +1,21 @@
+# @package _global_
+
+# Single multi-output task head for the Fredinh et al. (Nature Communications 2024)
+# 29-assay ChEMBL/JUMP-CP bioactivity benchmark. One MLP with 29 sigmoid outputs, one
+# per ChEMBL assay. Missing labels are handled via `target_nan_mask` in the loss config.
+architecture:
+  task_heads:
+    cell_bioactivity:
+      task_level: graph
+      out_dim: 29
+      hidden_dims: 256
+      depth: 2
+      activation: relu
+      # Loss is bce_logits (see loss_metrics_datamodule/cell_bioactivity.yaml); the head
+      # must emit raw logits, not post-sigmoid probabilities — otherwise sigmoid is
+      # applied twice and BCE gradients collapse.
+      last_activation: none
+      dropout: 0.5
+      normalization: "layer_norm"
+      last_normalization: "none"
+      residual_type: none

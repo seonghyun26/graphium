@@ -3,9 +3,8 @@
 datamodule:
   args:
     batch_size_training: 32
-    featurization:
-      # conformer_property_list: [positions_3d]
-      conformer_property_list: []
+    featurization: {}
+      # conformer_property_list: [positions_3d]  # uncomment for 3D features
 
 trainer:
   trainer:

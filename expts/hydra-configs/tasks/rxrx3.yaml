@@ -11,9 +11,9 @@ datamodule:
         split_test: 0.1
         seed: 0
         task_level: graph
-        # label_normalization:
-        #   normalize_val_test: True
-        #   method: "normal"
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
 
 architecture:
   task_heads:

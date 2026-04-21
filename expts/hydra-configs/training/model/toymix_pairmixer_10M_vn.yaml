@@ -1,0 +1,25 @@
+# @package _global_
+
+# PairMixer 10M + virtual node with the ToyMix dataset.
+# Same training config as pairmixer_10M; only the model differs.
+constants:
+  name: toymix_pairmixer_10M_vn
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: ../datacache/neurips2023-small/
+
+datamodule:
+  args:
+    batch_size_training: 32
+    batch_size_inference: 32
+    num_workers: 0
+    persistent_workers: false
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/small-dataset/pairmixer_10M_vn/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed

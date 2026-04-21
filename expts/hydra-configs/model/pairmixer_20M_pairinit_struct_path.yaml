@@ -1,0 +1,39 @@
+# @package _global_
+# PairMixer 20M + structural + Graphormer-style path-summary edge encoding.
+#
+# Adds to the ``structural`` arm a Graphormer-style path encoder that
+# walks shortest paths between every reachable pair and averages the
+# bond features along the path with learnable per-position projections:
+#   z_0 = z_OPM + PE(graph_distance) + PE(adjacency) + PE(path_edge)
+#
+# Reference: Ying et al., "Do Transformers Really Perform Bad for Graph
+# Representation?", NeurIPS 2021, Section 3.1.3.
+#
+# Unlike ``edge_feat`` (which only populates 1-hop positions), this source
+# gives chemically-meaningful features at *every* reachable pair position
+# by summarising the bonds traversed along the shortest path.
+#
+# Requires ``in_dim_edges=13`` for the same reason as the struct_ef arm.
+
+defaults:
+  - pairmixer_20M
+
+architecture:
+  gnn:
+    layer_kwargs:
+      in_dim_edges: 13
+      pair_init:
+        mode: additive
+        use_opm: true
+        opm_init: lecun
+        use_pair_positional: true
+        pair_positional:
+          sources: [graph_distance, adjacency, path_edge]
+          graph_distance:
+            max_dist: 8
+            embedding_dim: 32
+          adjacency:
+            embedding_dim: 8
+          path_edge:
+            embedding_dim: 16
+            max_path_length: 5      # Graphormer default

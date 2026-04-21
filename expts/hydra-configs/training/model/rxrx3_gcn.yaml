@@ -1,0 +1,13 @@
+# @package _global_
+
+# GCN with the RxRx3 cell morphology dataset.
+constants:
+  name: rxrx3_gcn
+  seed: 42
+  max_epochs: 100
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/rxrx3/
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/rxrx3/gcn/${now:%Y-%m-%d_%H-%M-%S}/

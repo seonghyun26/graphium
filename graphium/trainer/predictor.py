@@ -26,6 +26,11 @@ from torch_geometric.data import Batch, Data
 from graphium.config.config_convert import recursive_config_reformating
 from graphium.data.datamodule import BaseDataModule
 from graphium.trainer.metrics import MetricWrapper
+from graphium.trainer.amd import (
+    compute_modality_grad_norms,
+    group_losses_by_modality,
+    select_active_modalities,
+)
 from graphium.trainer.predictor_options import (
     EvalOptions,
     FlagOptions,
@@ -59,9 +64,11 @@ class PredictorModule(lightning.LightningModule):
         flag_kwargs: Dict[str, Any] = None,
         task_norms: Optional[Dict[Callable, Any]] = None,
         metrics_every_n_train_steps: Optional[int] = None,
+        aux_label_splits: Optional[Dict[str, int]] = None,
         replicas: int = 1,
         gradient_acc: int = 1,
         global_bs: Optional[int] = 1,
+        adaptive_modality_dropout: Optional[Dict[str, Any]] = None,
     ):
         """
         The Lightning module responsible for handling the predictions, losses, metrics, optimization, etc.
@@ -95,6 +102,30 @@ class PredictorModule(lightning.LightningModule):
         self.task_levels = task_levels
         self.featurization = featurization
         self.task_norms = task_norms
+        self.aux_label_splits = aux_label_splits or {}
+
+        # Adaptive Modality Dropout (AMD) -- arxiv.org/abs/2509.21971.
+        # Opt-in via config; disabled by default so existing runs are unaffected.
+        amd_cfg = dict(adaptive_modality_dropout or {})
+        self.amd_enabled = bool(amd_cfg.get("enabled", False))
+        self.amd_threshold = float(amd_cfg.get("threshold", 2.0))
+        self.amd_warmup_epochs = int(amd_cfg.get("warmup_epochs", 0))
+        self.amd_task_to_modality = dict(amd_cfg.get("modalities", {}) or {})
+        self.amd_log_grad_norms = bool(amd_cfg.get("log_grad_norms", True))
+
+        # Validate: tasks with aux_label_splits must not use label normalization,
+        # because the full label tensor (pY + prot_emb) would be normalized/denormalized
+        # as a unit, causing shape mismatches after the split.
+        if self.aux_label_splits and task_norms is not None:
+            for task_name in self.aux_label_splits:
+                prefixed = f"{task_levels[task_name]}_{task_name}" if not task_name.startswith(f"{task_levels[task_name]}_") else task_name
+                norm = task_norms.get(prefixed)
+                if norm is not None and getattr(norm, "method", None) is not None:
+                    raise ValueError(
+                        f"Task '{task_name}' uses aux_label_splits and must not have "
+                        f"label_normalization enabled (found method={norm.method!r}). "
+                        f"Pre-normalize the data offline instead."
+                    )
 
         super().__init__()
 
@@ -324,8 +355,86 @@ class PredictorModule(lightning.LightningModule):
         weighted_loss = total_loss / num_tasks
         return weighted_loss, all_task_losses
 
+    def _shared_encoder_params(self) -> List[torch.nn.Parameter]:
+        """Trainable parameters shared across tasks (encoder backbone).
+
+        These are the parameters that every modality competes for, and thus
+        the correct reference for per-modality gradient-norm measurement.
+        Task heads and per-task pooling layers are deliberately excluded.
+        """
+        params: List[torch.nn.Parameter] = []
+        for name in ("pre_nn", "pre_nn_edges", "encoder_manager", "gnn"):
+            module = getattr(self.model, name, None)
+            if module is None:
+                continue
+            for p in module.parameters():
+                if p.requires_grad:
+                    params.append(p)
+        return params
+
+    def _apply_adaptive_modality_dropout(
+        self, task_losses: Dict[str, Tensor], fallback_loss: Tensor
+    ) -> Tensor:
+        """Replace the aggregated loss with the AMD-filtered sum of modalities.
+
+        Falls back silently to ``fallback_loss`` when AMD is not applicable
+        (warm-up, frozen backbone, single modality) so the training step
+        never produces a zero-grad loss.
+        """
+        if self.current_epoch < self.amd_warmup_epochs:
+            return fallback_loss
+        shared_params = self._shared_encoder_params()
+        if not shared_params:
+            return fallback_loss
+        modality_losses = group_losses_by_modality(task_losses, self.amd_task_to_modality)
+        if len(modality_losses) < 2:
+            return fallback_loss
+
+        grad_norms = compute_modality_grad_norms(modality_losses, shared_params)
+        active, mean_norm = select_active_modalities(grad_norms, self.amd_threshold)
+
+        active_sum = torch.stack([modality_losses[n] for n in active]).sum()
+        # Keep scale comparable to default ``weighted_loss = sum / num_tasks``:
+        # dropped modalities contribute 0, active ones keep their usual weight.
+        amd_loss = active_sum / max(len(task_losses), 1)
+
+        if self.amd_log_grad_norms and self.logger is not None:
+            logs: Dict[str, Any] = {"train/amd/mean_grad_norm": mean_norm.detach()}
+            logs["train/amd/num_active"] = float(len(active))
+            for name, gn in grad_norms.items():
+                logs[f"train/amd/{name}/grad_norm"] = gn.detach()
+                logs[f"train/amd/{name}/dropped"] = 0.0 if name in active else 1.0
+            self.logger.log_metrics(logs, step=self.global_step)
+
+        return amd_loss
+
+    def _split_aux_from_labels(self, batch: Dict[str, Any]) -> None:
+        """For tasks with aux_label_splits, extract auxiliary features from labels and inject into graph.
+
+        This enables tasks like DTI pActivity where protein embeddings are stored
+        alongside the label (pY) in the label tensor. Before the forward pass:
+          - labels[:, :split_idx] stays as the real label
+          - labels[:, split_idx:] is moved to batch["features"].aux_<task> for the task head
+        """
+        if not self.aux_label_splits:
+            return
+        labels_batch = batch["labels"]
+        feats_batch = batch["features"]
+        for orig_task, split_idx in self.aux_label_splits.items():
+            prefixed = self._get_task_key(self.task_levels[orig_task], orig_task)
+            if hasattr(labels_batch, prefixed) and labels_batch[prefixed] is not None:
+                full = labels_batch[prefixed]
+                labels_batch[prefixed] = full[:, :split_idx]
+                aux = full[:, split_idx:]
+                # In multi-task batches, molecules without DTI labels have NaN-filled
+                # tensors. Replace NaN aux features with zeros to avoid polluting
+                # the GNN backbone gradients through NaN forward passes.
+                aux = torch.nan_to_num(aux, nan=0.0)
+                feats_batch[f"aux_{orig_task}"] = aux
+
     def _general_step(self, batch: Dict[str, Tensor], step_name: str, to_cpu: bool) -> Dict[str, Any]:
         r"""Common code for training_step, validation_step and testing_step"""
+        self._split_aux_from_labels(batch)
         preds = self.forward(batch)  # The dictionary of predictions
 
         # * check for nan in model output
@@ -364,6 +473,15 @@ class PredictorModule(lightning.LightningModule):
             target_nan_mask=self.target_nan_mask,
             multitask_handling=self.multitask_handling,
         )
+
+        # Adaptive Modality Dropout: only during training, only when >1 task.
+        if step_name == "train" and self.amd_enabled and len(task_losses) > 1:
+            loss = self._apply_adaptive_modality_dropout(task_losses, loss)
+
+        # Collect MoE auxiliary losses from any MoELayer modules in the model
+        for module in self.model.modules():
+            if hasattr(module, "aux_loss") and isinstance(module.aux_loss, torch.Tensor) and module.aux_loss.item() > 0:
+                loss = loss + module.aux_loss.to(loss.device)
 
         device = "cpu" if to_cpu else None
         for task in preds:
@@ -405,6 +523,7 @@ class PredictorModule(lightning.LightningModule):
         Paper: https://arxiv.org/abs/2010.09891
         Github: https://github.com/devnkong/FLAG
         """
+        self._split_aux_from_labels(batch)
 
         alpha, n_steps = self.flag_kwargs["alpha"], self.flag_kwargs["n_steps"]
 
@@ -642,6 +761,7 @@ class PredictorModule(lightning.LightningModule):
         concatenated_metrics_logs = self.task_epoch_summary.concatenate_metrics_logs(metrics_logs)
         concatenated_metrics_logs["val/mean_time"] = torch.tensor(self.mean_val_time_tracker.mean_value)
         concatenated_metrics_logs["val/mean_tput"] = self.mean_val_tput_tracker.mean_value
+        self._log_primary_score(concatenated_metrics_logs, "val")
         self.log_dict(concatenated_metrics_logs, sync_dist=True)
 
         # Save yaml file with the per-task metrics summaries
@@ -655,6 +775,7 @@ class PredictorModule(lightning.LightningModule):
         metrics_logs = self._general_epoch_end(outputs=self.test_step_outputs, step_name="test", device="cpu")
         self.test_step_outputs.clear()
         concatenated_metrics_logs = self.task_epoch_summary.concatenate_metrics_logs(metrics_logs)
+        self._log_primary_score(concatenated_metrics_logs, "test")
 
         self.log_dict(concatenated_metrics_logs, sync_dist=True)
 
@@ -667,6 +788,23 @@ class PredictorModule(lightning.LightningModule):
         hparams_log["n_params"] = self.n_params
         if self.logger is not None:
             self.logger.log_hyperparams(hparams_log)
+
+    def _log_primary_score(self, metrics_logs: Dict[str, Any], step_name: str) -> None:
+        """Log the primary metric for each task as ``score/{step_name}``.
+
+        Uses ``metrics_on_progress_bar`` to identify the primary metric per
+        task (first entry in the list).  For single-task ADMET finetuning this
+        produces one ``score/val`` and ``score/test`` value per run, making
+        cross-task comparison easy in W&B.
+        """
+        for task in self.tasks:
+            primary = self.metrics_on_progress_bar.get(task, [])
+            if not primary:
+                continue
+            key = self.task_epoch_summary.metric_log_name(task, primary[0], step_name)
+            if key in metrics_logs:
+                val = metrics_logs[key]
+                metrics_logs[f"score/{step_name}"] = val
 
     def get_progress_bar_dict(self) -> Dict[str, float]:
         prog_dict = {}

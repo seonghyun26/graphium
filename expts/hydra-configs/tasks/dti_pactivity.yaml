@@ -1,0 +1,49 @@
+# @package _global_
+# DTI pActivity task: MLP(molecule_repr || protein_embedding) -> pActivity
+#
+# The label tensor is [pY, prot_emb_0..prot_emb_1151] (1153 cols total).
+# aux_label_split=1 tells the predictor to split: first 1 col = label, rest = aux input.
+# aux_in_dim=1152 tells the task head to expect 1152 extra input dims (protein embedding).
+#
+# Data is pre-normalized (z-score on both pY and prot_emb), so label_normalization is disabled.
+
+datamodule:
+  args:
+    task_specific_args:
+      dti_pactivity:
+        df_path: data/dti-processed/dti_pactivity_esmc_100k.csv
+        smiles_col: "SMILES_nometa"
+        label_cols: null  # all non-SMILES columns: pY + prot_emb_0..prot_emb_1151
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
+
+architecture:
+  task_heads:
+    dti_pactivity:
+      task_level: graph
+      out_dim: 1
+      hidden_dims: 256
+      depth: 2
+      activation: relu
+      last_activation: none
+      aux_in_dim: 1152       # ESMC protein embedding dimension
+      aux_label_split: 1     # first 1 column is the real label (pY)
+
+predictor:
+  aux_label_splits:
+    dti_pactivity: 1          # must match aux_label_split above
+  loss_fun:
+    dti_pactivity: mae_ipu
+  metrics_on_progress_bar:
+    dti_pactivity: ['mae']
+  metrics_on_training_set:
+    dti_pactivity: ['mae']
+
+metrics:
+  dti_pactivity:
+  - name: mae
+    metric: mae_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu

@@ -18,7 +18,7 @@ from torch.nn import Module
 from torch import Tensor
 from torch_geometric.data import Batch
 from graphium.nn.base_graph_layer import BaseGraphModule
-from graphium.nn.base_layers import FCLayer, MultiheadAttentionMup, MLP
+from graphium.nn.base_layers import FCLayer, MultiheadAttentionMup, MLP, MoELayer
 from graphium.nn.pyg_layers import (
     GatedGCNPyg,
     GINConvPyg,
@@ -72,6 +72,10 @@ class GPSLayerPyg(BaseGraphModule):
         droppath_rate_ffn: float = 0.0,
         hidden_dim_scaling: float = 4.0,
         output_scale: float = 1.0,
+        # ---- Mixture-of-Experts ----
+        moe_num_experts: int = 0,
+        moe_top_k: int = 2,
+        moe_aux_loss_coeff: float = 0.01,
         **kwargs,
     ):
         r"""
@@ -187,8 +191,8 @@ class GPSLayerPyg(BaseGraphModule):
 
         self.precision = precision
 
-        # MLP applied at the end of the GPS layer
-        self.mlp = MLP(
+        # MLP applied at the end of the GPS layer (optionally MoE)
+        mlp_kwargs = dict(
             in_dim=in_dim,
             hidden_dims=int(hidden_dim_scaling * in_dim),
             out_dim=in_dim,
@@ -197,6 +201,19 @@ class GPSLayerPyg(BaseGraphModule):
             dropout=self.dropout,
             last_dropout=self.dropout,
         )
+        if moe_num_experts > 0:
+            self.mlp = MoELayer(
+                expert_cls=MLP,
+                expert_kwargs=mlp_kwargs,
+                router_dim=in_dim,
+                num_experts=moe_num_experts,
+                top_k=moe_top_k,
+                aux_loss_coeff=moe_aux_loss_coeff,
+            )
+            self.use_moe = True
+        else:
+            self.mlp = MLP(**mlp_kwargs)
+            self.use_moe = False
         self.f_out = FCLayer(in_dim, out_dim, normalization=normalization)
 
         # Normalization layers
@@ -283,7 +300,10 @@ class GPSLayerPyg(BaseGraphModule):
             feat = h_local
 
         # MLP block, with skip connection
-        feat_mlp = self.mlp(feat)
+        if self.use_moe:
+            feat_mlp = self.mlp(feat, batch_idx=batch.batch)
+        else:
+            feat_mlp = self.mlp(feat)
         # Add the droppath to the output of the MLP
         batch_size = None if feat.device.type != "ipu" else batch.graph_is_true.shape[0]
         if self.droppath_ffn is not None:

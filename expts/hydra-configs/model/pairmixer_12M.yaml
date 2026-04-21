@@ -1,0 +1,79 @@
+# @package _global_
+# PairMixer 12M configuration — best from architecture search (2026-04-14–17).
+#
+# D_s=96, D_z=224, depth=8 → 11.74M params (with edge injection)
+#   gnn backbone:  10.14M (8 × PairMixerLayerPyg)
+#   pre_nn:         0.02M
+#   pre_nn_edges:   0.01M
+#   graph_output:   1.56M (incl. task heads)
+#
+# Key findings baked into this config:
+#   1. D_z width > depth at fixed budget (224 × 8 > 192 × 12 > 160 × 16)
+#   2. LR = 2e-4 (5× default) — biggest single lever for scratch ADMET
+#   3. Expanded RDKit features (+hybridization, chirality, electronegativity,
+#      vdw-radius, num-ring, mass, conjugated) — consistent gains, zero cost
+#   4. Per-layer edge injection (MiniMol-style) — projects pre_nn_edges output
+#      into pair_dim at every layer, not just init. Massive gains on
+#      classification tasks (bbb_martins +0.155 AUROC, cyp2d6 +0.349 AUPRC)
+#   5. D_s=96 suffices — PairMixer leaves s_backbone=s_init; wider D_s wastes budget
+#   6. OPM-only pair_init — structural priors (graph_distance, path_edge) are
+#      task-specific and don't beat OPM + edge_injection on the average
+#   7. virtual_node=logsum aids graph-level readout
+#   8. pair_pool=stats (6×D_z) + node max-pool provides rich graph features
+#
+# Reference: Ouyang-Zhang et al., arXiv:2510.18870
+
+architecture:
+  pre_nn:
+    out_dim: 96
+    hidden_dims: 96
+
+  pre_nn_edges:
+    out_dim: 64
+    hidden_dims: 64
+    depth: 2
+    activation: relu
+    last_activation: none
+    dropout: 0.02
+    normalization: layer_norm
+    last_normalization: layer_norm
+    residual_type: none
+
+  gnn:
+    in_dim: 96
+    out_dim: 96
+    hidden_dims: 96
+    in_dim_edges: 64             # Must match pre_nn_edges.out_dim
+    depth: 8
+    residual_type: none
+    virtual_node: logsum
+    layer_type: 'pyg:pairmixer'
+    layer_kwargs:
+      pair_dim: 224
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      use_checkpoint: true
+      compile_mode: pair_track
+      edge_injection: true       # Per-layer bond → pair projection (MiniMol-style)
+
+  graph_output_nn:
+    graph:
+      pair_dim: 224              # Must match gnn.layer_kwargs.pair_dim
+      pair_pool: stats           # graph-aware stats pooling (level_in_dim = 6*pair_dim)
+      node_pooling: [max]        # concat node max-pool onto pair-stats
+      hidden_dims: 256
+      out_dim: 512
+
+# ── Expanded featurization ────────────────────────────────────────────────────
+datamodule:
+  args:
+    featurization:
+      atom_property_list_onehot: [atomic-number, group, period, total-valence, hybridization, chirality]
+      atom_property_list_float: [degree, formal-charge, radical-electron, aromatic, in-ring, mass, electronegativity, vdw-radius, num-ring]
+      edge_property_list: [bond-type-onehot, stereo, in-ring, conjugated]
+
+# ── Optimiser ─────────────────────────────────────────────────────────────────
+predictor:
+  optim_kwargs:
+    lr: 2.e-4

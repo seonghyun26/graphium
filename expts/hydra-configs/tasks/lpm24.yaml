@@ -1,0 +1,46 @@
+# @package _global_
+
+datamodule:
+  args:
+    task_specific_args:
+      lpm24:
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/lpm24_pubmedbert.csv
+        smiles_col: "SMILES_nometa"
+        label_cols: feature_*
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
+        # Pre-normalized (Z-score) in the pipeline; no additional normalization.
+        # label_normalization:
+        #   normalize_val_test: True
+        #   method: "normal"
+
+architecture:
+  task_heads:
+    lpm24:
+      task_level: graph
+      out_dim: 768
+      hidden_dims: 128
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
+
+predictor:
+  loss_fun:
+    lpm24: mae_ipu
+  metrics_on_progress_bar:
+    lpm24: ['mae']
+  metrics_on_training_set:
+    lpm24: ['mae']
+
+metrics:
+  lpm24:
+  - name: mae
+    metric: mae_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu

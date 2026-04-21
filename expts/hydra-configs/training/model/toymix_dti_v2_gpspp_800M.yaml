@@ -1,0 +1,19 @@
+# @package _global_
+
+# GPS++ 800M with the ToyMix + DTI v2 dataset.
+constants:
+  name: toymix_dti_v2_gpspp_800M
+  seed: 42
+  max_epochs: 100
+  data_dir: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix-dti-v2/
+
+datamodule:
+  args:
+    batch_size_training: 64
+    num_workers: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix-dti-v2/gpspp_800M/${now:%Y-%m-%d_%H-%M-%S}/

@@ -1,0 +1,26 @@
+# @package _global_
+
+# Boltz-inspired PairMixer with the ToyMix+BBBC047 dataset.
+constants:
+  name: toymix_bbbc047_pairmixer_boltz
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_bbbc047/
+
+datamodule:
+  args:
+    batch_size_training: 2
+    batch_size_inference: 2
+    dataloading_from: ram
+    num_workers: 0           # avoid CoW memory duplication with ram loading
+    persistent_workers: false
+    featurization_n_jobs: 0  # avoid loky pickling issues with large models
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_bbbc047/pairmixer_boltz/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed  # PairMixer triangle ops overflow fp16; bf16 has float32-range exponents
+    accumulate_grad_batches: 4  # effective batch size = 8

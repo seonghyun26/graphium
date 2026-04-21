@@ -1,0 +1,25 @@
+# @package _global_
+
+# PairMixer 20M with ToyMix + DTI pActivity (protein-label pre-training).
+constants:
+  name: toymix_dti_pactivity_pairmixer_20M
+  seed: 42
+  max_epochs: 100
+  data_dir: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix-dti-pactivity/
+
+datamodule:
+  args:
+    batch_size_training: 8       # halved after OOM; 1152-dim prot_emb aux input per sample
+    batch_size_inference: 8
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix-dti-pactivity/pairmixer_20M/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed
+    accumulate_grad_batches: 8   # effective batch = 64 (doubled to compensate halved bs)

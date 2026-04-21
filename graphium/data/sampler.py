@@ -11,7 +11,7 @@ Refer to the LICENSE file for the full terms and conditions.
 --------------------------------------------------------------------------------
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from torch.utils.data.dataloader import Dataset
 
 import torch.utils.data as data_utils
@@ -76,3 +76,60 @@ class DatasetSubSampler(data_utils.Sampler):
         skip subsampling.
         """
         return not all(value == 1.0 for value in sampler_task_dict.values())
+
+
+class SizeBucketSampler(data_utils.Sampler):
+    """Sort-then-chunk-shuffle sampler that groups similarly-sized graphs into batches.
+
+    This reduces wasted padding when models operate on dense representations
+    (e.g. PairFormer with (B, N_max, N_max, D) pair tensors), where a single
+    large molecule forces every molecule in the batch to pad to its size.
+
+    Algorithm per epoch:
+        1. Sort indices by num_nodes
+        2. Split into chunks of ``batch_size``
+        3. Optionally shuffle chunk order (preserves within-chunk grouping)
+        4. Yield indices sequentially
+    """
+
+    def __init__(
+        self,
+        num_nodes_list: List[int],
+        batch_size: int,
+        shuffle: bool = True,
+        indices: Optional[List[int]] = None,
+    ):
+        """
+        Parameters:
+            num_nodes_list: Number of nodes per graph (full dataset).
+            batch_size: DataLoader batch size — used as chunk size for grouping.
+            shuffle: If True, shuffle chunk order each epoch (training).
+            indices: Optional subset of dataset indices to sample from
+                     (e.g. pre-filtered by DatasetSubSampler).
+        """
+        self.num_nodes_list = np.asarray(num_nodes_list)
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.indices = np.asarray(indices) if indices is not None else np.arange(len(num_nodes_list))
+
+    def __iter__(self):
+        # Sort the active indices by molecule size
+        sizes = self.num_nodes_list[self.indices]
+        sorted_order = np.argsort(sizes, kind="stable")
+        sorted_indices = self.indices[sorted_order]
+
+        # Split into chunks of batch_size
+        n_chunks = max(1, len(sorted_indices) // self.batch_size)
+        chunks = np.array_split(sorted_indices, n_chunks)
+
+        # Shuffle chunk order for training randomness
+        if self.shuffle:
+            perm = np.random.permutation(len(chunks))
+            chunks = [chunks[i] for i in perm]
+
+        # Flatten and yield
+        for chunk in chunks:
+            yield from chunk.tolist()
+
+    def __len__(self):
+        return len(self.indices)

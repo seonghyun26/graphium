@@ -1,0 +1,35 @@
+graph_qm9/L1LossIPU/test: 0.09708701819181442
+graph_qm9/loss/test: 0.09708701819181442
+graph_qm9/mae/test: 0.09708701819181442
+graph_qm9/mean_pred/test: 0.004491270519793034
+graph_qm9/mean_target/test: -0.0024536263663321733
+graph_qm9/median_pred/test: -0.004322052001953125
+graph_qm9/median_target/test: -0.004497528076171875
+graph_qm9/pearsonr/test: 0.9639932513237
+graph_qm9/r2_score/test: 0.9258622527122498
+graph_qm9/std_pred/test: 0.8408924341201782
+graph_qm9/std_target/test: 0.9216634035110474
+graph_tox21/BCEWithLogitsLossIPU/test: 0.18806812167167664
+graph_tox21/auroc/test: 0.8375017046928406
+graph_tox21/avpr/test: 0.5068587064743042
+graph_tox21/f1 > 0.5/test: 0.9940069317817688
+graph_tox21/loss/test: 0.18806812167167664
+graph_tox21/mean_pred/test: -5.594294548034668
+graph_tox21/mean_target/test: 0.07284427434206009
+graph_tox21/median_pred/test: -5.90625
+graph_tox21/median_target/test: 0.0
+graph_tox21/precision > 0.5/test: 0.9940069317817688
+graph_tox21/std_pred/test: 1.4444202184677124
+graph_tox21/std_target/test: 0.2598974406719208
+graph_zinc/L1LossIPU/test: 0.11654577404260635
+graph_zinc/loss/test: 0.11654577404260635
+graph_zinc/mae/test: 0.11654577404260635
+graph_zinc/mean_pred/test: -0.14581087231636047
+graph_zinc/mean_target/test: -0.02675633318722248
+graph_zinc/median_pred/test: -0.183837890625
+graph_zinc/median_target/test: 0.0136260986328125
+graph_zinc/pearsonr/test: 0.9905429482460022
+graph_zinc/r2_score/test: 0.9721036553382874
+graph_zinc/std_pred/test: 0.6977123618125916
+graph_zinc/std_target/test: 0.9820283651351929
+loss/test: 0.13390029966831207

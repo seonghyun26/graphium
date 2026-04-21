@@ -1,0 +1,6 @@
+# @package _global_
+# Stability bundle: gradclip + accumulation.
+trainer:
+  trainer:
+    gradient_clip_val: 1.0
+    accumulate_grad_batches: 2

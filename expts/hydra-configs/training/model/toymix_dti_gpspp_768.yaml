@@ -1,0 +1,19 @@
+# @package _global_
+
+# GPS++ 768d/8L with the ToyMix + DTI dataset (non-MoE baseline).
+constants:
+  name: toymix_dti_gpspp_768
+  seed: 42
+  max_epochs: 50
+  data_dir: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix-dti/
+
+datamodule:
+  args:
+    batch_size_training: 128
+    num_workers: 0  # avoid CoW memory duplication with ram loading
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix-dti/gpspp_768/${now:%Y-%m-%d_%H-%M-%S}/

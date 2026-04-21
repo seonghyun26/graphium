@@ -1,0 +1,51 @@
+# @package _global_
+# PairMixer configuration matching pairformer_boltz dimensions
+#
+# Same dimensions as pairformer_boltz (D_s=384, D_z=128, depth=48)
+# but with triangle attention and pair-biased attention removed.
+# This enables direct speed/performance comparison.
+
+architecture:
+  pre_nn:
+    out_dim: 384
+    hidden_dims: 384
+
+  gnn:
+    in_dim: 384
+    out_dim: 384
+    hidden_dims: 384
+    depth: 48
+    residual_type: none           # PairMixer doesn't update node features (s_backbone=s_init);
+                                  # simple residual would double them every layer → bf16 overflow.
+    layer_type: 'pyg:pairmixer'
+    layer_kwargs:
+      pair_dim: 128              # Match pairformer_boltz
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      # ---- Speed ----
+      # compile=pair_track alone → ~1.97x fwd+bwd; also reduces peak memory.
+      # Depth=48 is large so keep checkpointing on unless OOM-free.
+      use_checkpoint: true
+      compile_mode: pair_track
+      # ---- Pair representation initialization ----
+      # z_0 = z_OPM + z_pair_prior (additive).  See PairFeatureInitializer.
+      pair_init:
+        mode: additive
+        use_opm: true
+        opm_init: lecun
+        use_pair_positional: true
+        pair_positional:
+          sources: [graph_distance, adjacency]
+          graph_distance:
+            max_dist: 8
+            embedding_dim: 32
+          adjacency:
+            embedding_dim: 8
+
+  graph_output_nn:
+    graph:
+      pair_dim: 128              # Pool pair_feat directly
+      pair_pool: stats           # graph-aware stats pooling (level_in_dim = 6*pair_dim)
+      hidden_dims: 384
+      out_dim: 1024

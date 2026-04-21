@@ -265,6 +265,11 @@ def load_architecture(
     if "finetuning" not in config:
         task_heads_kwargs = omegaconf.OmegaConf.to_object(task_heads_kwargs)
 
+    # Optional: multi-layer GNN representation pooling
+    gnn_layer_pooling_kwargs = (
+        dict(cfg_arch["gnn_layer_pooling"]) if cfg_arch.get("gnn_layer_pooling", None) is not None else None
+    )
+
     # Set all the input arguments for the model
     model_kwargs = dict(
         gnn_kwargs=gnn_kwargs,
@@ -273,6 +278,7 @@ def load_architecture(
         pe_encoders_kwargs=pe_encoders_kwargs,
         graph_output_nn_kwargs=graph_output_nn_kwargs,
         task_heads_kwargs=task_heads_kwargs,
+        gnn_layer_pooling_kwargs=gnn_layer_pooling_kwargs,
     )
     # Get accelerator_kwargs if they exist
     accelerator_kwargs = config["accelerator"].get("accelerator_kwargs", None)
@@ -446,6 +452,20 @@ def load_trainer(
     else:
         callbacks.append(LearningRateMonitor())
 
+    # Optional linear-probe monitor callback (enabled via `+probe=admet_linear`).
+    probe_cfg = config.get("probe") if hasattr(config, "get") else None
+    if probe_cfg is not None and probe_cfg.get("enabled", False):
+        from graphium.finetuning.linear_probe import ADMETLinearProbeCallback
+
+        callbacks.append(ADMETLinearProbeCallback(probe_cfg))
+
+    # Optional end-to-end fine-tune monitor (enabled via `+ft_monitor=admet_mlp`).
+    ft_monitor_cfg = config.get("ft_monitor") if hasattr(config, "get") else None
+    if ft_monitor_cfg is not None and ft_monitor_cfg.get("enabled", False):
+        from graphium.finetuning.admet_finetune import ADMETFinetuneCallback
+
+        callbacks.append(ADMETFinetuneCallback(ft_monitor_cfg))
+
     # Define the logger parameters
     wandb_cfg = config["constants"].get("wandb")
     if wandb_cfg is not None:
@@ -505,6 +525,16 @@ def save_params_to_wandb(
     # Save the featurizer into wandb
     featurizer_path = os.path.join(wandb_dir, "featurizer.pickle")
     joblib.dump(datamodule.smiles_transformer, featurizer_path)
+
+    # Log dataset sizes to wandb
+    if wandb_run is not None:
+        dataset_info = {}
+        for stage, ds in [("train", datamodule.train_ds), ("val", datamodule.val_ds), ("test", datamodule.test_ds)]:
+            if ds is not None:
+                dataset_info[f"dataset/{stage}_size"] = len(ds)
+        dataset_info["dataset/tasks"] = list(datamodule.task_dataset_processing_params.keys())
+        dataset_info["dataset/num_tasks"] = len(datamodule.task_dataset_processing_params)
+        wandb_run.config.update(dataset_info, allow_val_change=True)
 
     # Save the featurizer and configs into wandb
     if wandb_run is not None:

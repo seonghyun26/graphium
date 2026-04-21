@@ -132,6 +132,21 @@ class OptimOptions:
         if "mode" in key_args:
             torch_scheduler_kwargs.setdefault("mode", self.scheduler_kwargs["mode"])
 
+        # Drop kwargs not in the scheduler's signature (unless the scheduler accepts **kwargs).
+        # This lets downstream configs swap the scheduler cleanly without needing to null out
+        # every previous-scheduler-specific key (e.g. WarmUpLinearLR's max_num_epochs,
+        # warmup_epochs, verbose). Without this filter, deep-merged configs would fail at
+        # scheduler instantiation with `unexpected keyword argument`.
+        # Note: we must modify self.torch_scheduler_kwargs (not the local copy) because
+        # predictor.py reads from self.optim_options.torch_scheduler_kwargs at instantiation.
+        has_var_kwargs = any(
+            p.kind == p.VAR_KEYWORD for p in sig.parameters.values()
+        )
+        if not has_var_kwargs and self.torch_scheduler_kwargs is not None:
+            unknown = set(self.torch_scheduler_kwargs) - set(key_args) - {"module_type"}
+            for k in unknown:
+                self.torch_scheduler_kwargs.pop(k)
+
 
 @dataclass
 class EvalOptions:

@@ -1,0 +1,73 @@
+# @package _global_
+# Downstream DTI evaluation against TDC subsets (DAVIS, KIBA, BindingDB_*).
+#
+# Loads a pretrained checkpoint (built with the dti_pactivity head, e.g.
+# models_checkpoints/toymix-dti-esmc-v2/pairmixer_12M/...), freezes the
+# molecule encoder, and trains a fresh `MLP([z_mol || prot_emb_1152]) -> y`
+# head from scratch on a single TDC subset / split / seed.
+#
+# Linear-probe-style by default: unfreeze_pretrained_depth=0 and
+# epoch_unfreeze_all=none means the backbone is never trained.
+#
+# We reuse the dti_pactivity head as the rebuild source so the architectural
+# shape (aux_in_dim=1152, aux_label_split=1) is inherited; module_overrides
+# re-asserts the aux dims explicitly so the new head is well-defined even if
+# the pretrained checkpoint config drifts.
+
+constants:
+  # Mirror the ADMET/Polaris convention: constants.task is the per-run benchmark
+  # identity (the TDC DTI subset), so wandb groups and tags pick it up the same
+  # way. The graphium task-level name (``dti_eval``) remains hard-coded on the
+  # ``finetuning`` / architecture blocks — only this display handle changes.
+  task: ${constants.dti_subset}
+  name: dti_eval_${constants.task}_${constants.dti_split_method}_seed${constants.seed}
+  wandb:
+    name: ${constants.name}
+    project: dti_eval_${constants.task}
+    entity: multitask-gnn
+  seed: 42
+  max_epochs: 100
+  raise_train_error: false
+
+predictor:
+  optim_kwargs:
+    lr: 1.e-4
+  torch_scheduler_kwargs:
+    module_type: CosineAnnealingLR
+    T_max: ${constants.max_epochs}
+    eta_min: 1.0e-6
+
+datamodule:
+  args:
+    num_workers: 4
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    save_last: false
+
+finetuning:
+  task: dti_eval
+  level: graph
+  pretrained_model: dummy-pretrained-model
+  finetuning_module: task_heads
+  sub_module_from_pretrained: dti_pactivity
+  new_sub_module: dti_eval
+  drop_depth: 2
+  added_depth: 2
+  new_out_dim: 256
+  unfreeze_pretrained_depth: 0
+  epoch_unfreeze_all: none
+  module_overrides:
+    aux_in_dim: 1152
+    aux_label_split: 1
+  finetuning_head:
+    task: dti_eval
+    previous_module: task_heads
+    incoming_level: graph
+    model_type: mlp
+    in_dim: 256
+    out_dim: 1
+    hidden_dims: 256
+    depth: 2
+    last_layer_is_readout: true

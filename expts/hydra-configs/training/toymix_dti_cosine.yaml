@@ -1,0 +1,24 @@
+# @package _global_
+# ToyMix+DTI training with CosineAnnealingLR scheduler.
+
+predictor:
+  random_seed: ${constants.seed}
+  optim_kwargs:
+    lr: 4.e-5
+  torch_scheduler_kwargs:
+    module_type: CosineAnnealingLR
+    T_max: ${constants.max_epochs}
+  scheduler_kwargs: null
+  target_nan_mask: null
+  multitask_handling: flatten
+
+trainer:
+  seed: ${constants.seed}
+  model_checkpoint:
+    filename: ${constants.name}
+    save_last: True
+  trainer:
+    precision: 16
+    max_epochs: ${constants.max_epochs}
+    min_epochs: 1
+    check_val_every_n_epoch: 20

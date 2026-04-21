@@ -1,0 +1,66 @@
+# @package _global_
+# PairMixer++ 12M configuration — PairMixer 12M with lightweight GINE single-track updates.
+#
+# Target budget: stay close to PairMixer 12M while refreshing the pair track from the
+# updated single/node state every layer.
+#
+# Notes:
+#   - Keeps the PairMixer 12M backbone width/depth nearly unchanged.
+#   - Adds one residual GINE update per layer plus low-rank single->pair coupling.
+#   - Uses rank-16 coupling so the parameter count stays close to the 12M baseline.
+
+architecture:
+  pre_nn:
+    out_dim: 96
+    hidden_dims: 96
+
+  pre_nn_edges:
+    out_dim: 64
+    hidden_dims: 64
+    depth: 2
+    activation: relu
+    last_activation: none
+    dropout: 0.02
+    normalization: layer_norm
+    last_normalization: layer_norm
+    residual_type: none
+
+  gnn:
+    in_dim: 96
+    out_dim: 96
+    hidden_dims: 96
+    in_dim_edges: 64             # Must match pre_nn_edges.out_dim
+    depth: 8
+    residual_type: none
+    virtual_node: logsum
+    layer_type: 'pyg:pairmixerpp'
+    layer_kwargs:
+      pair_dim: 224
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      use_checkpoint: true
+      compile_mode: pair_track
+      edge_injection: true
+      single_to_pair_rank: 16
+
+  graph_output_nn:
+    graph:
+      pair_dim: 224
+      pair_pool: stats
+      node_pooling: [max]
+      hidden_dims: 256
+      out_dim: 512
+
+# ── Expanded featurization ────────────────────────────────────────────────────
+datamodule:
+  args:
+    featurization:
+      atom_property_list_onehot: [atomic-number, group, period, total-valence, hybridization, chirality]
+      atom_property_list_float: [degree, formal-charge, radical-electron, aromatic, in-ring, mass, electronegativity, vdw-radius, num-ring]
+      edge_property_list: [bond-type-onehot, stereo, in-ring, conjugated]
+
+# ── Optimiser ─────────────────────────────────────────────────────────────────
+predictor:
+  optim_kwargs:
+    lr: 2.e-4

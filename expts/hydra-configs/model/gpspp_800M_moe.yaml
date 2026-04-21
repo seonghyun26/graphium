@@ -1,0 +1,14 @@
+# @package _global_
+# GPS++ 800M with MoE: same backbone as gpspp_800M + 4 experts, top-2 routing
+# Adds ~3x FFN parameters (4 expert copies - 1 shared overhead) but routing
+# means only top-2 are active per molecule.
+
+defaults:
+  - gpspp_800M
+
+architecture:
+  gnn:
+    layer_kwargs:
+      moe_num_experts: 4
+      moe_top_k: 2
+      moe_aux_loss_coeff: 0.01

@@ -3,39 +3,59 @@
 # Source this file: source "$(dirname "$0")/common.sh"
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
+# Use BASH_SOURCE so sourcing from nested script directories resolves correctly.
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
 DEVICE=${DEVICE:-0}
 SEED=${SEED:-0}
 
 # ── Results directory (centralized CSV for notebook visualization) ────────────
-RESULTS_DIR=${RESULTS_DIR:-$(cd "$(dirname "$0")/.."; pwd)/results}
+RESULTS_DIR=${RESULTS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/results}
 
 # ── W&B ──────────────────────────────────────────────────────────────────────
 WANDB_ENTITY=${WANDB_ENTITY:-eddy26}
 WANDB_PROJECT=${WANDB_PROJECT:-graphium}
 
 # ── ADMET task list (22 TDC benchmark tasks) ─────────────────────────────────
-ADMET_TASKS=(
-    # Absorption
-    caco2_wang hia_hou pgp_broccatelli bioavailability_ma
-    lipophilicity_astrazeneca solubility_aqsoldb bbb_martins ppbr_az vdss_lombardo
-    # Metabolism
-    cyp2d6_veith cyp3a4_veith cyp2c9_veith
-    cyp2c9_substrate_carbonmangels cyp2d6_substrate_carbonmangels cyp3a4_substrate_carbonmangels
-    # Excretion
-    half_life_obach clearance_hepatocyte_az clearance_microsome_az
-    # Toxicity
-    ld50_zhu herg ames dili
-)
+# Override by setting ADMET_TASKS_OVERRIDE (space-separated) before sourcing.
+if [[ -n "${ADMET_TASKS_OVERRIDE:-}" ]]; then
+    read -ra ADMET_TASKS <<< "${ADMET_TASKS_OVERRIDE}"
+else
+    ADMET_TASKS=(
+        # Absorption
+        caco2_wang hia_hou pgp_broccatelli bioavailability_ma
+        lipophilicity_astrazeneca solubility_aqsoldb bbb_martins ppbr_az vdss_lombardo
+        # Metabolism
+        cyp2d6_veith cyp3a4_veith cyp2c9_veith
+        cyp2c9_substrate_carbonmangels cyp2d6_substrate_carbonmangels cyp3a4_substrate_carbonmangels
+        # Excretion
+        half_life_obach clearance_hepatocyte_az clearance_microsome_az
+        # Toxicity
+        ld50_zhu herg ames dili
+    )
+fi
+
+# ── Polaris ADME-Fang task list (6 endpoints) ────────────────────────────────
+# Override by setting POLARIS_ADME_TASKS_OVERRIDE (space-separated) before sourcing.
+if [[ -n "${POLARIS_ADME_TASKS_OVERRIDE:-}" ]]; then
+    read -ra POLARIS_ADME_TASKS <<< "${POLARIS_ADME_TASKS_OVERRIDE}"
+else
+    POLARIS_ADME_TASKS=(
+        adme_fang_hclint    # LOG_HLM_CLint  (human liver microsomal clearance)
+        adme_fang_rclint    # LOG_RLM_CLint  (rat liver microsomal clearance)
+        adme_fang_perm      # LOG_MDR1-MDCK_ER (MDR1-MDCK efflux ratio)
+        adme_fang_hppb      # LOG_HPPB (human plasma protein binding)
+        adme_fang_rppb      # LOG_RPPB (rat plasma protein binding)
+        adme_fang_solu      # LOG_SOLUBILITY
+    )
+fi
 
 # ── Helper: common W&B flags ─────────────────────────────────────────────────
 wandb_flags() {
     local tags="$1"
     echo "++constants.seed=${SEED}"
     echo "++constants.wandb.entity=${WANDB_ENTITY}"
-    echo "++constants.wandb.save_dir=null"
     echo "++constants.wandb.project=${WANDB_PROJECT}"
     echo "++constants.wandb.tags=${tags}"
     echo "++constants.results_csv_dir=${RESULTS_DIR}"

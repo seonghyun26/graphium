@@ -1,0 +1,5 @@
+# @package _global_
+# Gradient clipping — caps gradient-norm tail; biggest single stability lever.
+trainer:
+  trainer:
+    gradient_clip_val: 1.0

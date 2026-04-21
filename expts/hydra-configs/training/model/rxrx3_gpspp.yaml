@@ -6,7 +6,7 @@ constants:
   seed: 42
   max_epochs: 100
   raise_train_error: true
-  datacache_path: ../datacache/rxrx3/
+  datacache_path: /home/shpark/prj-molrepr/datacache/rxrx3/
 
 trainer:
   model_checkpoint:

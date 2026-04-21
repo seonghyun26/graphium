@@ -1,0 +1,41 @@
+# @package _global_
+
+datamodule:
+  args:
+    task_specific_args:
+      dti:
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/dti_esm2_100k.csv
+        smiles_col: "SMILES_nometa"
+        label_cols: feature_*
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
+
+architecture:
+  task_heads:
+    dti:
+      task_level: graph
+      out_dim: 2560
+      hidden_dims: 128
+      depth: 2
+      activation: relu
+      last_activation: none
+
+predictor:
+  loss_fun:
+    dti: mae_ipu
+  metrics_on_progress_bar:
+    dti: ['mae']
+  metrics_on_training_set:
+    dti: ['mae']
+
+metrics:
+  dti:
+  - name: mae
+    metric: mae_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu

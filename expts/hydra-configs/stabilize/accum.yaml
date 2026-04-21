@@ -1,0 +1,6 @@
+# @package _global_
+# Gradient accumulation — effective batch = 2 * per-step batch (bs=32 -> 64).
+# Halves per-step gradient variance at zero memory cost; per-epoch wall-clock ~unchanged.
+trainer:
+  trainer:
+    accumulate_grad_batches: 2
