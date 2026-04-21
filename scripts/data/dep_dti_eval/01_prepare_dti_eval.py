@@ -42,10 +42,19 @@ import pandas as pd
 import torch
 
 
-SUBSETS = ["DAVIS", "KIBA", "BindingDB_Kd", "BindingDB_Ki", "BindingDB_IC50"]
-METHODS = ["random", "cold_target"]
+SUBSETS = [
+    "DAVIS", "KIBA", "BindingDB_Kd", "BindingDB_Ki", "BindingDB_IC50",
+    "BindingDB_Patent_DG",   # special: uses tdc.BenchmarkGroup('dti_dg_group') with fixed temporal split
+]
+METHODS = ["random", "cold_target", "temporal"]
 ESMC_DIM = 1152
 PROT_EMB_COLS = [f"prot_emb_{i}" for i in range(ESMC_DIM)]
+
+# Subsets that go through the DTI-DG benchmark-group path (temporal-split leaderboard).
+# These do NOT use multi_pred.DTI; they use tdc.BenchmarkGroup('dti_dg_group').
+DG_SUBSET_TO_BENCHMARK = {
+    "BindingDB_Patent_DG": "bindingdb_patent",
+}
 
 
 def _import_tdc_dti():
@@ -56,6 +65,16 @@ def _import_tdc_dti():
     except ImportError:
         sys.exit("ERROR: PyTDC required. `pip install PyTDC`.")
     return DTI
+
+
+def _import_tdc_benchmark_group():
+    """Import TDC's BenchmarkGroup (used for the DTI-DG temporal-split leaderboard)."""
+    sys.modules.setdefault("gget", types.ModuleType("gget"))
+    try:
+        from tdc import BenchmarkGroup
+    except ImportError:
+        sys.exit("ERROR: PyTDC required. `pip install PyTDC`.")
+    return BenchmarkGroup
 
 
 def _load_protein_embeddings(path: str) -> pd.DataFrame:
@@ -122,10 +141,13 @@ def _build_subset_csv(
     out[label_col] = label_norm
     out[PROT_EMB_COLS] = prot_emb_norm
 
-    csv_path = output_dir / f"{subset}.csv"
-    out.to_csv(csv_path, index=False)
-    size_mb = csv_path.stat().st_size / (1024 * 1024)
-    print(f"  [{subset}] saved CSV: {csv_path} ({len(out):,} rows, {size_mb:.1f} MB)")
+    # Parquet instead of CSV: columnar + compressed -> 5-10x smaller, 10x faster
+    # to write and read at the 1M-row scale of BindingDB_Patent. Eval scripts
+    # use pd.read_parquet(columns=...) for the same projection semantics.
+    parquet_path = output_dir / f"{subset}.parquet"
+    out.to_parquet(parquet_path, index=False)
+    size_mb = parquet_path.stat().st_size / (1024 * 1024)
+    print(f"  [{subset}] saved parquet: {parquet_path} ({len(out):,} rows, {size_mb:.1f} MB)")
 
     stats_path = output_dir / f"{subset}_norm_stats.pt"
     torch.save(
@@ -212,6 +234,80 @@ def _generate_splits(
             )
 
 
+def _build_dtidg_subset_and_splits(
+    subset: str,
+    protein_emb_df: pd.DataFrame,
+    seeds: list[int],
+    output_dir: Path,
+    splits_dir: Path,
+    cache_dir: str,
+) -> None:
+    """Build CSV + per-seed temporal splits for the DTI-DG (BindingDB_Patent) leaderboard.
+
+    Test split is fixed (temporal: train on early-year patents, test on later years);
+    only the train/valid sub-split varies with seed. CSV is built from train_val + test
+    concatenated so we can index both via row indices in one file.
+    """
+    BenchmarkGroup = _import_tdc_benchmark_group()
+    bench_name = DG_SUBSET_TO_BENCHMARK[subset]
+    print(f"  [{subset}] loading dti_dg_group::{bench_name} (cache={cache_dir})")
+    group = BenchmarkGroup(name="dti_dg_group", path=cache_dir)
+    benchmark = group.get(bench_name)
+    train_val = benchmark["train_val"]
+    test = benchmark["test"]
+    full_df = pd.concat([train_val, test], ignore_index=True)
+    n_train_val = len(train_val)  # boundary index between train_val and test
+    print(f"  [{subset}] raw: train_val={len(train_val):,}  test={len(test):,}")
+
+    if "Target_ID" not in full_df.columns:
+        sys.exit(f"ERROR: dti_dg_group::{bench_name} has no 'Target_ID' column; got {list(full_df.columns)}")
+
+    # Reuse the regular CSV-builder (filter by protein, pY conversion, z-score). It
+    # appends a fresh row_idx column to the returned filtered_df we'll use for splits.
+    # Pass tdc_data=None — _build_subset_csv only uses it for diagnostic prints.
+    filtered_df, label_col = _build_subset_csv(
+        subset, None, full_df, protein_emb_df, output_dir,
+    )
+
+    # Pair-to-row-index lookup, identical pattern to _generate_splits.
+    pair_to_row = pd.Series(
+        filtered_df["row_idx"].values,
+        index=pd.MultiIndex.from_arrays(
+            [filtered_df["Drug"].values, filtered_df["Target_ID"].values],
+            names=["Drug", "Target_ID"],
+        ),
+    )
+    pair_to_rows = pair_to_row.groupby(level=[0, 1]).apply(list)
+
+    def _resolve(df_split: pd.DataFrame) -> list[int]:
+        idx = pd.MultiIndex.from_arrays(
+            [df_split["Drug"].values, df_split["Target_ID"].values],
+            names=["Drug", "Target_ID"],
+        )
+        hits = pair_to_rows.reindex(idx).dropna()
+        return [int(i) for sub in hits.values for i in sub]
+
+    # The temporal test split is fixed across seeds.
+    test_indices = _resolve(test)
+
+    for seed in seeds:
+        train_df, val_df = group.get_train_valid_split(
+            benchmark=bench_name, split_type="default", seed=seed,
+        )
+        split_indices = {
+            "train": _resolve(train_df),
+            "val": _resolve(val_df),
+            "test": test_indices,
+        }
+        out_path = splits_dir / f"{subset}_temporal_seed{seed}.pt"
+        torch.save(split_indices, out_path)
+        print(
+            f"  [{subset}/temporal/seed={seed}] train={len(split_indices['train']):,}"
+            f" val={len(split_indices['val']):,} test={len(split_indices['test']):,}"
+            f"  -> {out_path.name}"
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Build per-subset TDC DTI evaluation CSVs and split index files."
@@ -242,21 +338,43 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     splits_dir.mkdir(parents=True, exist_ok=True)
 
-    DTI = _import_tdc_dti()
     protein_emb_df = _load_protein_embeddings(args.protein_emb)
 
-    for subset in args.subsets:
-        print(f"\n=== {subset} ===")
-        tdc_data = DTI(name=subset, path=args.tdc_cache)
-        full_df = tdc_data.get_data()
-        # 'Target_ID' missing in some BindingDB variants — fall back to 'Target' (the seq).
-        if "Target_ID" not in full_df.columns:
-            sys.exit(f"ERROR: subset {subset} has no 'Target_ID' column; got {list(full_df.columns)}")
-
-        filtered_df, label_col = _build_subset_csv(
-            subset, tdc_data, full_df, protein_emb_df, output_dir,
+    # Validate method/subset compatibility: temporal only with DG subsets, and DG
+    # subsets only with temporal (they don't have a multi_pred.DTI loader path).
+    dg_subsets = [s for s in args.subsets if s in DG_SUBSET_TO_BENCHMARK]
+    regular_subsets = [s for s in args.subsets if s not in DG_SUBSET_TO_BENCHMARK]
+    regular_methods = [m for m in args.methods if m != "temporal"]
+    if dg_subsets and (set(args.methods) - {"temporal"}):
+        sys.exit(
+            f"ERROR: DG subsets {dg_subsets} only support method 'temporal'; "
+            f"got {args.methods}. Run them in a separate invocation."
         )
-        _generate_splits(subset, tdc_data, filtered_df, args.methods, args.seeds, splits_dir)
+    if "temporal" in args.methods and not dg_subsets:
+        sys.exit(
+            "ERROR: 'temporal' method requires a DG subset (e.g. BindingDB_Patent_DG)."
+        )
+
+    # ── Regular DTI subsets (random / cold_target) ────────────────────────────
+    if regular_subsets:
+        DTI = _import_tdc_dti()
+        for subset in regular_subsets:
+            print(f"\n=== {subset} ===")
+            tdc_data = DTI(name=subset, path=args.tdc_cache)
+            full_df = tdc_data.get_data()
+            if "Target_ID" not in full_df.columns:
+                sys.exit(f"ERROR: subset {subset} has no 'Target_ID' column; got {list(full_df.columns)}")
+            filtered_df, _ = _build_subset_csv(
+                subset, tdc_data, full_df, protein_emb_df, output_dir,
+            )
+            _generate_splits(subset, tdc_data, filtered_df, regular_methods, args.seeds, splits_dir)
+
+    # ── DTI-DG subsets (fixed temporal split, per-seed train/val rotation) ────
+    for subset in dg_subsets:
+        print(f"\n=== {subset} (dti_dg_group, temporal) ===")
+        _build_dtidg_subset_and_splits(
+            subset, protein_emb_df, args.seeds, output_dir, splits_dir, args.tdc_cache,
+        )
 
     print("\nDone.")
 

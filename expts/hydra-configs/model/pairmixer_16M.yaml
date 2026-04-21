@@ -1,0 +1,23 @@
+# @package _global_
+# PairMixer 16M-class configuration.
+#
+# User-specified shape:
+#   D_s=96, D_z=256, depth=10
+#
+# This keeps the search-validated PairMixer 12M recipe intact
+# (expanded RDKit features, per-layer edge injection, OPM-only pair init,
+# virtual_node=logsum) while increasing the pair track width to 256 and
+# extending the backbone to 10 layers.
+
+defaults:
+  - pairmixer_12M
+
+architecture:
+  gnn:
+    depth: 10
+    layer_kwargs:
+      pair_dim: 256
+
+  graph_output_nn:
+    graph:
+      pair_dim: 256

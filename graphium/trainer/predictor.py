@@ -26,6 +26,11 @@ from torch_geometric.data import Batch, Data
 from graphium.config.config_convert import recursive_config_reformating
 from graphium.data.datamodule import BaseDataModule
 from graphium.trainer.metrics import MetricWrapper
+from graphium.trainer.amd import (
+    compute_modality_grad_norms,
+    group_losses_by_modality,
+    select_active_modalities,
+)
 from graphium.trainer.predictor_options import (
     EvalOptions,
     FlagOptions,
@@ -63,6 +68,7 @@ class PredictorModule(lightning.LightningModule):
         replicas: int = 1,
         gradient_acc: int = 1,
         global_bs: Optional[int] = 1,
+        adaptive_modality_dropout: Optional[Dict[str, Any]] = None,
     ):
         """
         The Lightning module responsible for handling the predictions, losses, metrics, optimization, etc.
@@ -97,6 +103,15 @@ class PredictorModule(lightning.LightningModule):
         self.featurization = featurization
         self.task_norms = task_norms
         self.aux_label_splits = aux_label_splits or {}
+
+        # Adaptive Modality Dropout (AMD) -- arxiv.org/abs/2509.21971.
+        # Opt-in via config; disabled by default so existing runs are unaffected.
+        amd_cfg = dict(adaptive_modality_dropout or {})
+        self.amd_enabled = bool(amd_cfg.get("enabled", False))
+        self.amd_threshold = float(amd_cfg.get("threshold", 2.0))
+        self.amd_warmup_epochs = int(amd_cfg.get("warmup_epochs", 0))
+        self.amd_task_to_modality = dict(amd_cfg.get("modalities", {}) or {})
+        self.amd_log_grad_norms = bool(amd_cfg.get("log_grad_norms", True))
 
         # Validate: tasks with aux_label_splits must not use label normalization,
         # because the full label tensor (pY + prot_emb) would be normalized/denormalized
@@ -340,6 +355,59 @@ class PredictorModule(lightning.LightningModule):
         weighted_loss = total_loss / num_tasks
         return weighted_loss, all_task_losses
 
+    def _shared_encoder_params(self) -> List[torch.nn.Parameter]:
+        """Trainable parameters shared across tasks (encoder backbone).
+
+        These are the parameters that every modality competes for, and thus
+        the correct reference for per-modality gradient-norm measurement.
+        Task heads and per-task pooling layers are deliberately excluded.
+        """
+        params: List[torch.nn.Parameter] = []
+        for name in ("pre_nn", "pre_nn_edges", "encoder_manager", "gnn"):
+            module = getattr(self.model, name, None)
+            if module is None:
+                continue
+            for p in module.parameters():
+                if p.requires_grad:
+                    params.append(p)
+        return params
+
+    def _apply_adaptive_modality_dropout(
+        self, task_losses: Dict[str, Tensor], fallback_loss: Tensor
+    ) -> Tensor:
+        """Replace the aggregated loss with the AMD-filtered sum of modalities.
+
+        Falls back silently to ``fallback_loss`` when AMD is not applicable
+        (warm-up, frozen backbone, single modality) so the training step
+        never produces a zero-grad loss.
+        """
+        if self.current_epoch < self.amd_warmup_epochs:
+            return fallback_loss
+        shared_params = self._shared_encoder_params()
+        if not shared_params:
+            return fallback_loss
+        modality_losses = group_losses_by_modality(task_losses, self.amd_task_to_modality)
+        if len(modality_losses) < 2:
+            return fallback_loss
+
+        grad_norms = compute_modality_grad_norms(modality_losses, shared_params)
+        active, mean_norm = select_active_modalities(grad_norms, self.amd_threshold)
+
+        active_sum = torch.stack([modality_losses[n] for n in active]).sum()
+        # Keep scale comparable to default ``weighted_loss = sum / num_tasks``:
+        # dropped modalities contribute 0, active ones keep their usual weight.
+        amd_loss = active_sum / max(len(task_losses), 1)
+
+        if self.amd_log_grad_norms and self.logger is not None:
+            logs: Dict[str, Any] = {"train/amd/mean_grad_norm": mean_norm.detach()}
+            logs["train/amd/num_active"] = float(len(active))
+            for name, gn in grad_norms.items():
+                logs[f"train/amd/{name}/grad_norm"] = gn.detach()
+                logs[f"train/amd/{name}/dropped"] = 0.0 if name in active else 1.0
+            self.logger.log_metrics(logs, step=self.global_step)
+
+        return amd_loss
+
     def _split_aux_from_labels(self, batch: Dict[str, Any]) -> None:
         """For tasks with aux_label_splits, extract auxiliary features from labels and inject into graph.
 
@@ -405,6 +473,10 @@ class PredictorModule(lightning.LightningModule):
             target_nan_mask=self.target_nan_mask,
             multitask_handling=self.multitask_handling,
         )
+
+        # Adaptive Modality Dropout: only during training, only when >1 task.
+        if step_name == "train" and self.amd_enabled and len(task_losses) > 1:
+            loss = self._apply_adaptive_modality_dropout(task_losses, loss)
 
         # Collect MoE auxiliary losses from any MoELayer modules in the model
         for module in self.model.modules():

@@ -43,9 +43,9 @@ import numpy as np
 import pandas as pd
 
 
-ESM_MODEL = "esm2_t36_3B_UR50D"
-REPR_LAYER = 36
-EMBEDDING_DIM = 2560
+DEFAULT_ESM_MODEL = "esm2_t36_3B_UR50D"
+DEFAULT_REPR_LAYER = 36
+DEFAULT_EMBEDDING_DIM = 2560
 
 
 class GPUManager:
@@ -84,7 +84,10 @@ def write_fasta(protein_id: str, sequence: str, fasta_dir: str) -> str:
     return fasta_path
 
 
-def run_esm_extract(fasta_path: str, output_dir: str, gpu_id: int) -> bool:
+def run_esm_extract(
+    fasta_path: str, output_dir: str, gpu_id: int,
+    esm_model: str, repr_layer: int,
+) -> bool:
     """Run esm-extract for one FASTA file on a specific GPU.
 
     Returns True on success, False on failure.
@@ -94,11 +97,11 @@ def run_esm_extract(fasta_path: str, output_dir: str, gpu_id: int) -> bool:
 
     cmd = [
         "esm-extract",
-        ESM_MODEL,
+        esm_model,
         fasta_path,
         output_dir,
         "--repr_layers",
-        str(REPR_LAYER),
+        str(repr_layer),
         "--include",
         "mean",
     ]
@@ -118,6 +121,8 @@ def process_batch(
     fasta_dir: str,
     embedding_dir: str,
     gpu_manager: GPUManager,
+    esm_model: str,
+    repr_layer: int,
 ):
     """Process a batch of proteins: write FASTA, run ESM, skip existing."""
     gpu_id = gpu_manager.get_gpu()
@@ -127,7 +132,7 @@ def process_batch(
             continue  # idempotent: skip already-extracted proteins
 
         fasta_path = write_fasta(protein_id, sequence, fasta_dir)
-        run_esm_extract(fasta_path, embedding_dir, gpu_id)
+        run_esm_extract(fasta_path, embedding_dir, gpu_id, esm_model, repr_layer)
 
 
 def main():
@@ -158,6 +163,21 @@ def main():
         default=32,
         help="Number of proteins per GPU batch (default: 32)",
     )
+    parser.add_argument(
+        "--esm-model",
+        default=DEFAULT_ESM_MODEL,
+        help=(
+            "ESM-2 variant (default: %(default)s / 2560-d / layer 36). "
+            "Use 'esm2_t33_650M_UR50D' with --repr-layer 33 for 1280-d "
+            "(GRAM-DTI paper default)."
+        ),
+    )
+    parser.add_argument(
+        "--repr-layer",
+        type=int,
+        default=DEFAULT_REPR_LAYER,
+        help="ESM-2 layer to extract (default: %(default)s for esm2_t36_3B_UR50D).",
+    )
     args = parser.parse_args()
 
     gpu_ids = [int(g) for g in args.gpus.split(",")]
@@ -168,9 +188,8 @@ def main():
 
     print("Stage 2: Extracting ESM2 protein embeddings")
     print("=" * 60)
-    print(f"  Model:      {ESM_MODEL}")
-    print(f"  Repr layer: {REPR_LAYER}")
-    print(f"  Embed dim:  {EMBEDDING_DIM}")
+    print(f"  Model:      {args.esm_model}")
+    print(f"  Repr layer: {args.repr_layer}")
     print(f"  GPUs:       {gpu_ids}")
 
     # Load DTI data and extract unique proteins
@@ -213,7 +232,8 @@ def main():
         futures = []
         for batch in batches:
             fut = executor.submit(
-                process_batch, batch, fasta_dir, embedding_dir, gpu_manager
+                process_batch, batch, fasta_dir, embedding_dir, gpu_manager,
+                args.esm_model, args.repr_layer,
             )
             futures.append(fut)
 

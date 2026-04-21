@@ -138,6 +138,7 @@ METRICS_REGRESSION = {
     "r2_score_ipu": Metrics.r2_score_ipu,
     "mae_ipu": Metrics.mean_absolute_error_ipu,
     "mse_ipu": Metrics.mean_squared_error_ipu,
+    "concordance_index_ipu": Metrics.concordance_index_ipu,
 }
 
 METRICS_DICT = deepcopy(METRICS_CLASSIFICATION)

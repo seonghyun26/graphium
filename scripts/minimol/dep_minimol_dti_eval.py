@@ -33,6 +33,7 @@ from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.neural_network import MLPRegressor
 from scipy.stats import pearsonr, spearmanr
+from tqdm import tqdm
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -45,6 +46,7 @@ SUBSET_LABEL_COL = {
     "BindingDB_Kd": "pY",
     "BindingDB_Ki": "pY",
     "BindingDB_IC50": "pY",
+    "BindingDB_Patent_DG": "pY",   # DTI-DG temporal-split leaderboard
     "KIBA": "kiba_score",
 }
 ESMC_DIM = 1152
@@ -59,15 +61,15 @@ def load_dti_split(
     Returns (train_df, val_df, test_df, label_col). Each df has columns
     [SMILES_nometa, <label_col>, prot_emb_0..prot_emb_1151].
     """
-    csv_path = DTI_EVAL_DIR / f"{subset}.csv"
+    parquet_path = DTI_EVAL_DIR / f"{subset}.parquet"
     splits_path = DTI_EVAL_DIR / "splits" / f"{subset}_{method}_seed{seed}.pt"
-    if not csv_path.exists():
-        sys.exit(f"ERROR: {csv_path} missing. Run scripts/data/dti_eval/01_prepare_dti_eval.py.")
+    if not parquet_path.exists():
+        sys.exit(f"ERROR: {parquet_path} missing. Run scripts/data/dti_eval/01_prepare_dti_eval.py.")
     if not splits_path.exists():
         sys.exit(f"ERROR: {splits_path} missing. Re-run data prep with --methods {method}.")
 
     label_col = SUBSET_LABEL_COL[subset]
-    df = pd.read_csv(csv_path, usecols=["SMILES_nometa", label_col, *PROT_EMB_COLS])
+    df = pd.read_parquet(parquet_path, columns=["SMILES_nometa", label_col, *PROT_EMB_COLS])
     splits = torch.load(splits_path, weights_only=False)
     return (
         df.iloc[splits["train"]].reset_index(drop=True),
@@ -77,8 +79,45 @@ def load_dti_split(
     )
 
 
-def embed_smiles(smiles: List[str], cache_path: Path) -> np.ndarray:
-    """Minimol embeddings with a per-SMILES cache (identical pattern to minimol_eval.py)."""
+def _safe_minimol_embed(model, smiles_batch: List[str], chunk_size: int = 128) -> Dict[str, torch.Tensor]:
+    """Embed SMILES via Minimol, bisecting chunks that crash.
+
+    Minimol's featurizer can fail on certain SMILES (kekulize errors, weird
+    valences, organometallic bonds); a single bad SMILES poisons the whole
+    `model(batch)` call with `'str' has no 'stores'`. We bisect failing chunks
+    down to single SMILES and drop those that can't be embedded.
+    """
+    results: Dict[str, torch.Tensor] = {}
+    stack: List[List[str]] = []
+    for i in range(0, len(smiles_batch), chunk_size):
+        stack.append(smiles_batch[i:i + chunk_size])
+    pbar = tqdm(total=len(smiles_batch), desc="minimol embedding", unit="mol", smoothing=0.05)
+    while stack:
+        chunk = stack.pop()
+        if not chunk:
+            continue
+        try:
+            embs = model(chunk)
+            for s, e in zip(chunk, embs):
+                results[s] = e.detach().cpu().float()
+            pbar.update(len(chunk))
+        except Exception:
+            if len(chunk) == 1:
+                pbar.update(1)
+                continue
+            mid = len(chunk) // 2
+            stack.append(chunk[mid:])
+            stack.append(chunk[:mid])
+    pbar.close()
+    return results
+
+
+def embed_smiles(smiles: List[str], cache_path: Path) -> Tuple[np.ndarray, np.ndarray]:
+    """Minimol embeddings with a per-SMILES cache.
+
+    Returns (embeddings, mask) where mask is True for SMILES the encoder could
+    handle. Caller must drop masked-out rows from y / prot_emb.
+    """
     EMB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cache: Dict[str, torch.Tensor] = (
         torch.load(cache_path, weights_only=False) if cache_path.exists() else {}
@@ -88,11 +127,18 @@ def embed_smiles(smiles: List[str], cache_path: Path) -> np.ndarray:
     if missing:
         print(f"  [minimol] embedding {len(missing):,} / {len(unique_smiles):,} new SMILES...", flush=True)
         model = Minimol()
-        new_embs = model(missing)
-        for s, e in zip(missing, new_embs):
-            cache[s] = e.detach().cpu().float()
+        new_embs = _safe_minimol_embed(model, missing)
+        cache.update(new_embs)
         torch.save(cache, cache_path)
-    return np.stack([cache[s].numpy() for s in smiles], axis=0)
+    mask = np.array([s in cache for s in smiles], dtype=bool)
+    if mask.any():
+        out = np.stack([cache[s].numpy() for s in smiles if s in cache], axis=0)
+    else:
+        out = np.zeros((0, 0), dtype=np.float32)
+    dropped = int((~mask).sum())
+    if dropped:
+        print(f"  [minimol] WARN: {dropped:,} SMILES couldn't be embedded; dropping those rows.")
+    return out, mask
 
 
 def fit_and_eval(
@@ -170,7 +216,7 @@ def append_results_row(row: Dict[str, object]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subset", required=True, choices=list(SUBSET_LABEL_COL.keys()))
-    parser.add_argument("--method", required=True, choices=["random", "cold_target"])
+    parser.add_argument("--method", required=True, choices=["random", "cold_target", "temporal"])
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--head", choices=["linear", "mlp"], default="mlp")
     args = parser.parse_args()
@@ -188,17 +234,19 @@ def main() -> None:
         pd.concat([train["SMILES_nometa"], val["SMILES_nometa"], test["SMILES_nometa"]])
         .unique().tolist()
     )
-    _ = embed_smiles(all_smiles, cache_path)
+    embed_smiles(all_smiles, cache_path)   # pre-warm cache
 
-    def build_features(df: pd.DataFrame) -> np.ndarray:
-        z_mol = embed_smiles(df["SMILES_nometa"].tolist(), cache_path)
-        z_prot = df[PROT_EMB_COLS].to_numpy(dtype=np.float32)
-        return np.concatenate([z_mol, z_prot], axis=1)
+    def build_features(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+        z_mol, mask = embed_smiles(df["SMILES_nometa"].tolist(), cache_path)
+        df_ok = df[mask].reset_index(drop=True)
+        z_prot = df_ok[PROT_EMB_COLS].to_numpy(dtype=np.float32)
+        x = np.concatenate([z_mol, z_prot], axis=1)
+        y = df_ok[label_col].to_numpy(dtype=np.float32)
+        return x, y
 
-    x_train, x_val, x_test = build_features(train), build_features(val), build_features(test)
-    y_train = train[label_col].to_numpy(dtype=np.float32)
-    y_val = val[label_col].to_numpy(dtype=np.float32)
-    y_test = test[label_col].to_numpy(dtype=np.float32)
+    x_train, y_train = build_features(train)
+    x_val, y_val = build_features(val)
+    x_test, y_test = build_features(test)
     print(f"  feature shape: {x_train.shape[1]}-d  (minimol 512 + prot_emb {ESMC_DIM})")
 
     metrics = fit_and_eval(x_train, y_train, x_val, y_val, x_test, y_test, args.head, args.seed)

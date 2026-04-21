@@ -599,14 +599,60 @@ def spearman_ipu(preds, target):
         target: ground truth scores
     """
     nans = target.isnan()
-    dtype = preds.dtype
+    # Cast to float32 to avoid bf16 precision loss in ranking
+    preds = preds.float()
+    target = target.float()
     preds[nans] = float("inf")
     target[nans] = float("inf")
-    preds_sort = _rank_data(preds).to(dtype=dtype)
-    target_sort = _rank_data(target).to(dtype=dtype)
+    preds_sort = _rank_data(preds)
+    target_sort = _rank_data(target)
     target_sort[nans] = float("nan")
     spearman = pearson_ipu(preds_sort, target_sort)
     return Tensor(spearman)
+
+
+def concordance_index_ipu(preds, target):
+    """Pairwise concordance index (C-index) for DTI benchmarks.
+
+    CI = P(p_i > p_j | y_i > y_j), with ties counted as 0.5.
+    Uses a chunked computation to keep memory bounded for large test sets.
+
+    Args:
+        preds: estimated scores
+        target: ground truth scores
+    """
+    if preds.ndim == 2 and preds.shape[-1] == 1:
+        preds = preds.squeeze(-1)
+        target = target.squeeze(-1)
+
+    mask = ~target.isnan()
+    preds = preds[mask].float()
+    target = target[mask].float()
+
+    n = target.numel()
+    if n < 2:
+        return Tensor(torch.tensor(float("nan")))
+
+    concordant = 0
+    tied = 0
+    n_pairs = 0
+    chunk_size = 4096
+
+    for i in range(0, n, chunk_size):
+        t_chunk = target[i : i + chunk_size]
+        p_chunk = preds[i : i + chunk_size]
+        dy = t_chunk.unsqueeze(1) - target.unsqueeze(0)
+        dp = p_chunk.unsqueeze(1) - preds.unsqueeze(0)
+        pos = dy > 0
+        n_pairs += pos.sum()
+        concordant += (dp[pos] > 0).sum()
+        tied += (dp[pos] == 0).sum()
+
+    if n_pairs == 0:
+        return Tensor(torch.tensor(float("nan")))
+
+    ci = (concordant.float() + 0.5 * tied.float()) / n_pairs.float()
+    return Tensor(ci)
 
 
 def _rank_data(data: Tensor) -> Tensor:
@@ -618,9 +664,9 @@ def _rank_data(data: Tensor) -> Tensor:
     Adopted from `Rank of element tensor`_
     """
     n = data.numel()
-    rank = torch.empty_like(data)
+    rank = torch.empty(n, dtype=torch.float32, device=data.device)
     idx = data.argsort()
-    rank[idx] = torch.arange(1, n + 1, dtype=data.dtype, device=data.device)
+    rank[idx] = torch.arange(1, n + 1, dtype=torch.float32, device=data.device)
 
     # TODO: Repeats not yet supported
     # repeats = _find_repeats(data)

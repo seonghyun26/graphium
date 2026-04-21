@@ -67,3 +67,5 @@ metrics:
     metric: pearsonr_ipu
   - name: spearmanr
     metric: spearmanr_ipu
+  - name: concordance_index
+    metric: concordance_index_ipu

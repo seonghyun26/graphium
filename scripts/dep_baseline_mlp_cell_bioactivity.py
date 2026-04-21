@@ -3,22 +3,34 @@ MLP baseline for the cell_bioactivity benchmark (Fredinh et al. 2024).
 
 Mirrors `MLP_predictor.py` from github.com/cfredinh/bioactive (3-layer MLP,
 focal-BCE masked loss, SGD); the upstream script is generic over per-compound
-feature vectors and the paper runs it twice — once with chemistry features
-(ECFP) and once with cell-painting features (CPCNN embeddings). Pick which
-via `--features {ecfp,cpcnn}`.
+feature vectors. The paper runs it with chemistry features (ECFP) and with
+cell-painting features (CPCNN embeddings); we additionally support Minimol
+and MolE pretrained molecule embeddings to benchmark learned chemistry
+representations against the paper's ECFP baseline.
+
+Pick which via `--features {ecfp,cpcnn,minimol,mole}`.
 
 Reads graphium's CSV outputs from `scripts/prep_cell_bioactivity.py` and
 appends one row to `results/experiment_results.csv` (model name
-`ecfp_mlp` or `cpcnn_mlp`) so the dashboard notebook picks it up alongside
-GNN runs.
+`{features}_mlp`, e.g. `minimol_mlp`) so the dashboard notebook picks it up
+alongside GNN runs.
 
 Feature modes
 -------------
-- `ecfp`  : ECFP4 (r=2, 1024 bits) computed on-the-fly from the `smiles`
-            column. Compound-only baseline.
-- `cpcnn` : 672-dim CPCNN cell-painting embeddings, mean-aggregated per
-            SMILES from `--cpcnn-csv`. Compounds without a CPCNN profile
-            (no Cell Painting wells) are dropped from the splits.
+- `ecfp`    : ECFP4 (r=2, 1024 bits) computed on-the-fly from the `smiles`
+              column. Paper's compound-only chemistry baseline.
+- `cpcnn`   : 672-dim CPCNN cell-painting embeddings, mean-aggregated per
+              SMILES from `--cpcnn-csv`. Compounds without a CPCNN profile
+              (no Cell Painting wells) are dropped from the splits.
+- `minimol` : 512-dim Minimol (Kläser et al., 2024) embeddings from the
+              frozen pretrained encoder (`pip install minimol`). Cached
+              per-SMILES at `datacache/minimol_embeddings/cell_bioactivity.pt`
+              and reused across folds/seeds.
+- `mole`    : 1000-dim MolE (gin_concat_R1000_E8000_lambda0.0001; Méndez-Lucio
+              et al., 2025) embeddings from the frozen pretrained encoder,
+              using the Zenodo checkpoint fetched by
+              `scripts/mole/download_mole_baseline.sh`. Cached at
+              `datacache/mole_embeddings/cell_bioactivity.pt`.
 
 Loss is the upstream `BCEMASKEDLoss` (focal BCE-with-logits, gamma=2) with
 the ±1/0 label encoding produced internally by remapping graphium's 0/1/NaN.
@@ -30,17 +42,24 @@ Usage
 
     # Cell-painting baseline
     python scripts/baseline_mlp_cell_bioactivity.py --features cpcnn
+
+    # Pretrained-chemistry baselines
+    python scripts/baseline_mlp_cell_bioactivity.py --features minimol --cv
+    python scripts/baseline_mlp_cell_bioactivity.py --features mole --cv
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
+import io
 import os
+import sys
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -51,6 +70,12 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from sklearn.metrics import average_precision_score, roc_auc_score
 from torch.utils.data import DataLoader, Dataset
+
+
+# Repo root for loading sibling scripts/caches; baseline lives in scripts/.
+ROOT = Path(__file__).resolve().parents[1]
+MINIMOL_CACHE_DIR = ROOT / "datacache" / "minimol_embeddings"
+MOLE_CACHE_DIR = ROOT / "datacache" / "mole_embeddings"
 
 
 # ─── Featurizers ───────────────────────────────────────────────────────────────
@@ -114,6 +139,140 @@ def featurize_cpcnn(
     return matrix, valid
 
 
+def _embed_with_bisect(
+    smiles_list: List[str],
+    embed_chunk: "Callable[[List[str]], Dict[str, np.ndarray]]",
+    *, chunk_size: int, label: str,
+) -> Dict[str, np.ndarray]:
+    """Embed a list of SMILES in chunks; bisect failing chunks down to singletons
+    so one poisonous SMILES (e.g. kekulize errors, exotic bond types) doesn't
+    crash the whole featurization. Returns {smi -> vector} for successes only.
+    """
+    from tqdm import tqdm
+    results: Dict[str, np.ndarray] = {}
+    stack: List[List[str]] = []
+    for i in range(0, len(smiles_list), chunk_size):
+        stack.append(smiles_list[i : i + chunk_size])
+    pbar = tqdm(total=len(smiles_list), desc=f"{label} embedding",
+                unit="mol", smoothing=0.05)
+    while stack:
+        chunk = stack.pop()
+        if not chunk:
+            continue
+        try:
+            results.update(embed_chunk(chunk))
+            pbar.update(len(chunk))
+        except Exception:
+            if len(chunk) == 1:
+                pbar.update(1)
+                continue
+            mid = len(chunk) // 2
+            stack.append(chunk[mid:])
+            stack.append(chunk[:mid])
+    pbar.close()
+    return results
+
+
+def featurize_minimol(smiles_series: pd.Series) -> tuple[np.ndarray, np.ndarray]:
+    """Frozen Minimol 512-d embeddings, cached per-SMILES across folds/seeds.
+
+    Drops SMILES the upstream featurizer can't handle (rare kekulize / valence
+    issues); those rows become invalid so split_indices() excludes them.
+    """
+    MINIMOL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_path = MINIMOL_CACHE_DIR / "cell_bioactivity.pt"
+    cache: Dict[str, np.ndarray] = {}
+    if cache_path.exists():
+        raw_cache = torch.load(cache_path, weights_only=False)
+        for s, v in raw_cache.items():
+            cache[s] = v.detach().cpu().float().numpy() if isinstance(v, torch.Tensor) else np.asarray(v, dtype=np.float32)
+
+    unique_smiles = list(dict.fromkeys(smiles_series.tolist()))
+    missing = [s for s in unique_smiles if s not in cache]
+    if missing:
+        logger.info(f"minimol: embedding {len(missing):,} / {len(unique_smiles):,} new SMILES")
+        # Imported lazily: the `minimol` package spins up a torch model at import time.
+        from minimol import Minimol
+        model = Minimol()
+
+        def _embed(chunk: List[str]) -> Dict[str, np.ndarray]:
+            embs = model(chunk)
+            return {s: e.detach().cpu().float().numpy() for s, e in zip(chunk, embs)}
+
+        new_embs = _embed_with_bisect(missing, _embed, chunk_size=128, label="minimol")
+        cache.update(new_embs)
+        # Save as torch tensors to match existing DTI-eval cache format.
+        torch.save({s: torch.from_numpy(v) for s, v in cache.items()}, cache_path)
+
+    return _materialize_cache(smiles_series, cache, label="minimol")
+
+
+def featurize_mole(smiles_series: pd.Series, device: str,
+                   batch_size: int) -> tuple[np.ndarray, np.ndarray]:
+    """Frozen MolE 1000-d (gin_concat_R1000) embeddings, cached per-SMILES.
+
+    Uses the Zenodo checkpoint + upstream inference path from
+    scripts/mole/mole_eval.py. Drops SMILES the upstream featurizer can't
+    handle (DATIVE bonds, etc.) — those rows become invalid.
+    """
+    MOLE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_path = MOLE_CACHE_DIR / "cell_bioactivity.pt"
+    cache: Dict[str, np.ndarray] = (
+        torch.load(cache_path, weights_only=False) if cache_path.exists() else {}
+    )
+
+    unique_smiles = list(dict.fromkeys(smiles_series.tolist()))
+    missing = [s for s in unique_smiles if s not in cache]
+    if missing:
+        logger.info(f"mole: embedding {len(missing):,} / {len(unique_smiles):,} new SMILES")
+        sys.path.insert(0, str(ROOT / "scripts" / "mole"))
+        from mole_eval import ensure_upstream_checkpoint_layout, MOLE_MODEL_NAME
+        repo_dir = ensure_upstream_checkpoint_layout()
+        sys.path.insert(0, str(repo_dir))
+        from dataset.dataset_representation import batch_representation, load_pretrained_model
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            model = load_pretrained_model(
+                pretrain_architecture="gin_concat",
+                pretrained_model=MOLE_MODEL_NAME,
+                pretrained_dir=str(repo_dir / "ckpt"),
+                device=device,
+            )
+
+        def _embed(chunk: List[str]) -> Dict[str, np.ndarray]:
+            smile_df = pd.DataFrame({"chem_id": chunk, "smiles": chunk})
+            embs_df = batch_representation(smile_df, model, batch_size=batch_size, device=device)
+            return {str(cid): row.to_numpy(dtype=np.float32) for cid, row in embs_df.iterrows()}
+
+        new_embs = _embed_with_bisect(missing, _embed, chunk_size=256, label="mole")
+        cache.update(new_embs)
+        torch.save(cache, cache_path)
+
+    return _materialize_cache(smiles_series, cache, label="mole")
+
+
+def _materialize_cache(
+    smiles_series: pd.Series, cache: Dict[str, np.ndarray], *, label: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Stack cached embeddings in `smiles_series` order; mark missing as invalid."""
+    first_vec = next(iter(cache.values())) if cache else None
+    if first_vec is None:
+        raise RuntimeError(f"{label}: no embeddings produced (all SMILES failed)")
+    dim = int(first_vec.shape[0])
+    matrix = np.zeros((len(smiles_series), dim), dtype=np.float32)
+    valid = np.zeros(len(smiles_series), dtype=bool)
+    for i, smi in enumerate(smiles_series):
+        vec = cache.get(smi)
+        if vec is None:
+            continue
+        matrix[i] = vec
+        valid[i] = True
+    dropped = int((~valid).sum())
+    if dropped:
+        logger.warning(f"{label}: {dropped:,} SMILES couldn't be embedded; rows will be dropped")
+    return matrix, valid
+
+
 # ─── Dataset / loaders ─────────────────────────────────────────────────────────
 
 
@@ -146,6 +305,10 @@ def load_dataset(args: argparse.Namespace):
         feats, valid = featurize_ecfp(df.smiles, n_bits=args.n_bits)
     elif args.features == "cpcnn":
         feats, valid = featurize_cpcnn(df.smiles, Path(args.cpcnn_csv))
+    elif args.features == "minimol":
+        feats, valid = featurize_minimol(df.smiles)
+    elif args.features == "mole":
+        feats, valid = featurize_mole(df.smiles, args.embed_device, args.embed_batch_size)
     else:
         raise ValueError(f"unknown --features {args.features!r}")
 
@@ -272,7 +435,10 @@ def _train_one_fold(
     folds don't leak test stats back into training.
     """
     # Per-fold standardization of dense features (no-op for binary ECFP).
-    if args.features == "cpcnn":
+    # Dense pretrained molecule embeddings (Minimol/MolE) benefit from the same
+    # standardization as CPCNN — stats are computed on the current fold's train
+    # split only to avoid leaking test statistics.
+    if args.features in {"cpcnn", "minimol", "mole"}:
         mu = feats[splits_idx["train"]].mean(axis=0, keepdims=True)
         sd = feats[splits_idx["train"]].std(axis=0, keepdims=True) + 1e-6
         feats = ((feats - mu) / sd).astype(np.float32)
@@ -459,13 +625,19 @@ def append_results_row(summary: dict, args: argparse.Namespace) -> None:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     base = Path("/home/shpark/prj-molrepr/datacache/cell_bioactivity")
-    p.add_argument("--features", choices=("ecfp", "cpcnn"), default="ecfp",
-                   help="Feature mode: ecfp (chemistry) or cpcnn (cell-painting).")
+    p.add_argument("--features", choices=("ecfp", "cpcnn", "minimol", "mole"), default="ecfp",
+                   help="Feature mode: ecfp (chemistry), cpcnn (cell-painting), "
+                        "minimol (512-d pretrained), or mole (256-d pretrained).")
     p.add_argument("--csv", default=str(base / "cell_bioactivity.csv"))
     p.add_argument("--splits", default=str(base / "cell_bioactivity_split.csv"))
     p.add_argument("--cpcnn-csv",
                    default="/home/shpark/prj-molrepr/datacache/jump_cpcnn/jump_cpcnn_smiles_embeddings.csv",
                    help="CPCNN embeddings CSV (used when --features=cpcnn).")
+    p.add_argument("--embed-device", default=None,
+                   help="Device for minimol/mole embedding pass "
+                        "(default: cuda:0 if available else cpu; only affects embedding).")
+    p.add_argument("--embed-batch-size", type=int, default=2048,
+                   help="Batch size for minimol/mole upstream embedding call.")
     p.add_argument("--results-dir", default="/home/shpark/prj-molrepr/graphium/results")
     p.add_argument("--n-bits", type=int, default=1024,
                    help="ECFP bit count (only used when --features=ecfp).")
@@ -490,12 +662,15 @@ def parse_args() -> argparse.Namespace:
     args = p.parse_args()
 
     # Resolve per-feature-mode defaults for optimizer + lr when left on 'auto'.
-    # ECFP inputs are sparse binary → paper's SGD+lr=2.0 works; dense CPCNN
-    # embeddings need Adam+lr=1e-3 to converge (SGD+2.0 explodes gradients).
+    # ECFP inputs are sparse binary → paper's SGD+lr=2.0 works; dense learned
+    # embeddings (CPCNN / Minimol / MolE) need Adam+lr=1e-3 to converge
+    # (SGD+2.0 explodes gradients when inputs are continuous).
     if args.optimizer == "auto":
         args.optimizer = "sgd" if args.features == "ecfp" else "adam"
     if args.lr is None:
         args.lr = 2.0 if args.optimizer == "sgd" else 1e-3
+    if args.embed_device is None:
+        args.embed_device = "cuda:0" if torch.cuda.is_available() else "cpu"
     return args
 
 

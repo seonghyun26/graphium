@@ -15,8 +15,11 @@ constants:
 
 datamodule:
   args:
-    batch_size_training: 64
-    batch_size_inference: 64
+    # 1152-d prot_emb aux input per sample fans into the head -> halve the
+    # training batch (matches dti_pactivity_pairmixer_20M.yaml's OOM-driven sizing).
+    # Inference can stay larger since no gradients are kept.
+    batch_size_training: 16
+    batch_size_inference: 32
     num_workers: 4
     persistent_workers: true
     featurization_n_jobs: 0
@@ -27,4 +30,4 @@ trainer:
     filename: "${constants.name}_epoch{epoch:03d}"
   trainer:
     precision: bf16-mixed
-    accumulate_grad_batches: 1
+    accumulate_grad_batches: 4    # effective batch = 64 (bs 16 x 4)

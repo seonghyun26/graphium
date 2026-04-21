@@ -80,7 +80,7 @@ for subset in "${SUBSET_LIST[@]}"; do
                 ++constants.dti_split_seed=${seed} \
                 ++constants.dti_eval_dir=${DTI_EVAL_DIR} \
                 +finetuning=${FINETUNING_CONFIG} \
-                ++finetuning.pretrained_model=${CKPT} \
+                "++finetuning.pretrained_model='${CKPT}'" \
                 ++finetuning.finetuning_head.in_dim=${FINETUNE_DIM} \
                 ++finetuning.finetuning_head.hidden_dims=${FINETUNE_DIM} \
                 ++finetuning.new_out_dim=${FINETUNE_DIM} \

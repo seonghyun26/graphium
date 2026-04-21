@@ -30,6 +30,7 @@ from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.neural_network import MLPRegressor
 from scipy.stats import pearsonr, spearmanr
+from tqdm import tqdm
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -50,6 +51,7 @@ SUBSET_LABEL_COL = {
     "BindingDB_Kd": "pY",
     "BindingDB_Ki": "pY",
     "BindingDB_IC50": "pY",
+    "BindingDB_Patent_DG": "pY",   # DTI-DG temporal-split leaderboard
     "KIBA": "kiba_score",
 }
 ESMC_DIM = 1152
@@ -60,15 +62,15 @@ def load_dti_split(
     subset: str, method: str, seed: int,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, str]:
     """Load prepped DTI CSV + split indices, slice into train/val/test frames."""
-    csv_path = DTI_EVAL_DIR / f"{subset}.csv"
+    parquet_path = DTI_EVAL_DIR / f"{subset}.parquet"
     splits_path = DTI_EVAL_DIR / "splits" / f"{subset}_{method}_seed{seed}.pt"
-    if not csv_path.exists():
-        sys.exit(f"ERROR: {csv_path} missing. Run scripts/data/dti_eval/01_prepare_dti_eval.py.")
+    if not parquet_path.exists():
+        sys.exit(f"ERROR: {parquet_path} missing. Run scripts/data/dti_eval/01_prepare_dti_eval.py.")
     if not splits_path.exists():
         sys.exit(f"ERROR: {splits_path} missing. Re-run data prep with --methods {method}.")
 
     label_col = SUBSET_LABEL_COL[subset]
-    df = pd.read_csv(csv_path, usecols=["SMILES_nometa", label_col, *PROT_EMB_COLS])
+    df = pd.read_parquet(parquet_path, columns=["SMILES_nometa", label_col, *PROT_EMB_COLS])
     splits = torch.load(splits_path, weights_only=False)
     return (
         df.iloc[splits["train"]].reset_index(drop=True),
@@ -78,8 +80,51 @@ def load_dti_split(
     )
 
 
-def embed_smiles(smiles: List[str], cache_path: Path, device: str, batch_size: int) -> np.ndarray:
-    """MolE embeddings with a per-SMILES cache (identical pattern to mole_eval.py)."""
+def _safe_mole_embed(
+    batch_representation, smiles_list: List[str], model, *, batch_size: int, device: str,
+    chunk_size: int = 256,
+) -> Dict[str, np.ndarray]:
+    """Embed SMILES via MolE, bisecting chunks that crash.
+
+    MolE's upstream BOND_LIST hardcodes SINGLE/DOUBLE/TRIPLE/AROMATIC only — any
+    SMILES with DATIVE (common in patent organometallics), HYDROGEN, or ZERO
+    bonds raises `ValueError: ... is not in list` for the whole chunk. Bisect to
+    isolate bad molecules and drop them.
+    """
+    results: Dict[str, np.ndarray] = {}
+    stack: List[List[str]] = []
+    for i in range(0, len(smiles_list), chunk_size):
+        stack.append(smiles_list[i:i + chunk_size])
+    pbar = tqdm(total=len(smiles_list), desc="mole embedding", unit="mol", smoothing=0.05)
+    while stack:
+        chunk = stack.pop()
+        if not chunk:
+            continue
+        smile_df = pd.DataFrame({"chem_id": chunk, "smiles": chunk})
+        try:
+            embs_df = batch_representation(smile_df, model, batch_size=batch_size, device=device)
+            for chem_id, row in embs_df.iterrows():
+                results[str(chem_id)] = row.to_numpy(dtype=np.float32)
+            pbar.update(len(chunk))
+        except Exception:
+            if len(chunk) == 1:
+                pbar.update(1)
+                continue
+            mid = len(chunk) // 2
+            stack.append(chunk[mid:])
+            stack.append(chunk[:mid])
+    pbar.close()
+    return results
+
+
+def embed_smiles(
+    smiles: List[str], cache_path: Path, device: str, batch_size: int,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """MolE embeddings with a per-SMILES cache.
+
+    Returns (embeddings, mask). Mask is True for SMILES the encoder handled;
+    caller drops masked rows from y / prot_emb.
+    """
     EMB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cache: Dict[str, np.ndarray] = (
         torch.load(cache_path, weights_only=False) if cache_path.exists() else {}
@@ -99,12 +144,20 @@ def embed_smiles(smiles: List[str], cache_path: Path, device: str, batch_size: i
                 pretrained_dir=str(repo_dir / "ckpt"),
                 device=device,
             )
-        smile_df = pd.DataFrame({"chem_id": missing, "smiles": missing})
-        embeddings = batch_representation(smile_df, model, batch_size=batch_size, device=device)
-        for chem_id, row in embeddings.iterrows():
-            cache[str(chem_id)] = row.to_numpy(dtype=np.float32)
+        new_embs = _safe_mole_embed(
+            batch_representation, missing, model, batch_size=batch_size, device=device,
+        )
+        cache.update(new_embs)
         torch.save(cache, cache_path)
-    return np.stack([cache[s] for s in smiles], axis=0)
+    mask = np.array([s in cache for s in smiles], dtype=bool)
+    if mask.any():
+        out = np.stack([cache[s] for s in smiles if s in cache], axis=0)
+    else:
+        out = np.zeros((0, 0), dtype=np.float32)
+    dropped = int((~mask).sum())
+    if dropped:
+        print(f"  [mole] WARN: {dropped:,} SMILES couldn't be embedded; dropping those rows.")
+    return out, mask
 
 
 def _concordance_index(y: np.ndarray, p: np.ndarray) -> float:
@@ -182,7 +235,7 @@ def default_device() -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subset", required=True, choices=list(SUBSET_LABEL_COL.keys()))
-    parser.add_argument("--method", required=True, choices=["random", "cold_target"])
+    parser.add_argument("--method", required=True, choices=["random", "cold_target", "temporal"])
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--head", choices=["linear", "mlp"], default="mlp")
     parser.add_argument("--device", default=default_device())
@@ -201,17 +254,19 @@ def main() -> None:
         pd.concat([train["SMILES_nometa"], val["SMILES_nometa"], test["SMILES_nometa"]])
         .unique().tolist()
     )
-    _ = embed_smiles(all_smiles, cache_path, args.device, args.embed_batch_size)
+    embed_smiles(all_smiles, cache_path, args.device, args.embed_batch_size)   # pre-warm
 
-    def build_features(df: pd.DataFrame) -> np.ndarray:
-        z_mol = embed_smiles(df["SMILES_nometa"].tolist(), cache_path, args.device, args.embed_batch_size)
-        z_prot = df[PROT_EMB_COLS].to_numpy(dtype=np.float32)
-        return np.concatenate([z_mol, z_prot], axis=1)
+    def build_features(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+        z_mol, mask = embed_smiles(df["SMILES_nometa"].tolist(), cache_path, args.device, args.embed_batch_size)
+        df_ok = df[mask].reset_index(drop=True)
+        z_prot = df_ok[PROT_EMB_COLS].to_numpy(dtype=np.float32)
+        x = np.concatenate([z_mol, z_prot], axis=1)
+        y = df_ok[label_col].to_numpy(dtype=np.float32)
+        return x, y
 
-    x_train, x_val, x_test = build_features(train), build_features(val), build_features(test)
-    y_train = train[label_col].to_numpy(dtype=np.float32)
-    y_val = val[label_col].to_numpy(dtype=np.float32)
-    y_test = test[label_col].to_numpy(dtype=np.float32)
+    x_train, y_train = build_features(train)
+    x_val, y_val = build_features(val)
+    x_test, y_test = build_features(test)
     print(f"  feature shape: {x_train.shape[1]}-d  (mole + prot_emb {ESMC_DIM})")
 
     metrics = fit_and_eval(x_train, y_train, x_val, y_val, x_test, y_test, args.head, args.seed)

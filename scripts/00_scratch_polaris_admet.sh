@@ -50,7 +50,6 @@ for task in "${POLARIS_ADME_TASKS[@]}"; do
         ++architecture.task_heads.${task}.hidden_dims=256 \
         ++architecture.task_heads.${task}.depth=4 \
         ++trainer.model_checkpoint.save_last=False \
-        ++trainer.model_checkpoint.dirpath=models_checkpoints/polaris_admet/scratch/${MODEL}/${task}/${now:%Y-%m-%d_%H-%M-%S}/ \
         ${EXTRA_FLAGS:-} \
     || echo "WARN: task ${task} failed, continuing..."
 

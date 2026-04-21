@@ -36,9 +36,54 @@ ADDED_DEPTH=${ADDED_DEPTH:-4}
 # ── Infer pretrain dataset from checkpoint path (same logic as TDC ADMET) ─────
 if [[ -z "${PRETRAIN_DATASET:-}" ]]; then
     CKPT_LOWER=$(echo "${CKPT}" | tr '[:upper:]' '[:lower:]')
-    if   [[ "${CKPT_LOWER}" == *"largemix"* || "${CKPT_LOWER}" == *"large-dataset"* ]]; then PRETRAIN_DATASET="largemix"
-    elif [[ "${CKPT_LOWER}" == *"toymix"*   || "${CKPT_LOWER}" == *"small-dataset"* ]]; then PRETRAIN_DATASET="toymix"
-    else PRETRAIN_DATASET="unknown"
+    if [[ "${CKPT_LOWER}" == *"toymix_rxrx3_dti"* || "${CKPT_LOWER}" == *"toymix-rxrx3-dti"* ]]; then
+        PRETRAIN_DATASET="toymix_rxrx3_dti"
+    elif [[ "${CKPT_LOWER}" == *"toymix_rxrx3"* || "${CKPT_LOWER}" == *"toymix-rxrx3"* ]]; then
+        PRETRAIN_DATASET="toymix_rxrx3"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti_esmc_v2"* || "${CKPT_LOWER}" == *"toymix-dti-esmc-v2"* ]]; then
+        PRETRAIN_DATASET="toymix_dti_esmc_v2"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti_esmc"* || "${CKPT_LOWER}" == *"toymix-dti-esmc"* ]]; then
+        PRETRAIN_DATASET="toymix_dti_esmc"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti_pactivity"* || "${CKPT_LOWER}" == *"toymix-dti-pactivity"* ]]; then
+        PRETRAIN_DATASET="toymix_dti_pactivity"
+    elif [[ "${CKPT_LOWER}" == *"dti_pactivity"* || "${CKPT_LOWER}" == *"dti-pactivity"* ]]; then
+        PRETRAIN_DATASET="dti_pactivity"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti_10k_filtered"* || "${CKPT_LOWER}" == *"toymix-dti-10k-filtered"* ]]; then
+        PRETRAIN_DATASET="toymix_dti_10k_filtered"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti_filtered"* || "${CKPT_LOWER}" == *"toymix-dti-filtered"* ]]; then
+        PRETRAIN_DATASET="toymix_dti_filtered"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti_v2"* || "${CKPT_LOWER}" == *"toymix-dti-v2"* ]]; then
+        PRETRAIN_DATASET="toymix_dti_v2"
+    elif [[ "${CKPT_LOWER}" == *"toymix_dti"* || "${CKPT_LOWER}" == *"toymix-dti"* ]]; then
+        PRETRAIN_DATASET="toymix_dti"
+    elif [[ "${CKPT_LOWER}" == *"toymix_lpm24_galactica"* || "${CKPT_LOWER}" == *"toymix-lpm24-galactica"* ]]; then
+        PRETRAIN_DATASET="toymix_lpm24_galactica"
+    elif [[ "${CKPT_LOWER}" == *"toymix_lpm24"* || "${CKPT_LOWER}" == *"toymix-lpm24"* ]]; then
+        PRETRAIN_DATASET="toymix_lpm24"
+    elif [[ "${CKPT_LOWER}" == *"rxrx3_dti"* || "${CKPT_LOWER}" == *"rxrx3-dti"* ]]; then
+        PRETRAIN_DATASET="rxrx3_dti"
+    elif [[ "${CKPT_LOWER}" == *"largemix_rxrx3_dti"* || "${CKPT_LOWER}" == *"largemix-rxrx3-dti"* ]]; then
+        PRETRAIN_DATASET="largemix_rxrx3_dti"
+    elif [[ "${CKPT_LOWER}" == *"largemix_rxrx3"* || "${CKPT_LOWER}" == *"largemix-rxrx3"* ]]; then
+        PRETRAIN_DATASET="largemix_rxrx3"
+    elif [[ "${CKPT_LOWER}" == *"largemix_dti_filtered"* || "${CKPT_LOWER}" == *"largemix-dti-filtered"* ]]; then
+        PRETRAIN_DATASET="largemix_dti_filtered"
+    elif [[ "${CKPT_LOWER}" == *"largemix_dti"* || "${CKPT_LOWER}" == *"largemix-dti"* ]]; then
+        PRETRAIN_DATASET="largemix_dti"
+    elif [[ "${CKPT_LOWER}" == *"largemix"* || "${CKPT_LOWER}" == *"large-dataset"* ]]; then
+        PRETRAIN_DATASET="largemix"
+    elif [[ "${CKPT_LOWER}" == *"toymix_bbbc047_filtered"* || "${CKPT_LOWER}" == *"toymix-bbbc047-filtered"* ]]; then
+        PRETRAIN_DATASET="toymix_bbbc047_filtered"
+    elif [[ "${CKPT_LOWER}" == *"toymix_bbbc047"* || "${CKPT_LOWER}" == *"toymix-bbbc047"* ]]; then
+        PRETRAIN_DATASET="toymix_bbbc047"
+    elif [[ "${CKPT_LOWER}" == *"toymix"* || "${CKPT_LOWER}" == *"small-dataset"* ]]; then
+        PRETRAIN_DATASET="toymix"
+    elif [[ "${CKPT_LOWER}" == *"rxrx3"* ]]; then
+        PRETRAIN_DATASET="rxrx3"
+    elif [[ "${CKPT_LOWER}" == *"dti"* ]]; then
+        PRETRAIN_DATASET="dti"
+    else
+        PRETRAIN_DATASET="unknown"
     fi
 fi
 

@@ -57,7 +57,7 @@ case "${MODEL}" in
     pairformer_17M|pairformer_52M)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
-    pairmixer_auto|pairmixer_12M|pairmixer_10M|pairmixer_20M|pairmixer_40M|pairmixer_boltz)
+    pairmixer_auto|pairmixer_12M|pairmixer_16M|pairmixer_10M|pairmixer_20M|pairmixer_40M|pairmixer_boltz)
         DIM_FLAGS="++architecture.task_heads.\${task}.hidden_dims=${FINETUNE_DIM}"
         ;;
     *)
@@ -89,6 +89,8 @@ if [[ -z "${PRETRAIN_DATASET:-}" ]]; then
         PRETRAIN_DATASET="toymix_dti_v2"
     elif [[ "${CKPT_LOWER}" == *"toymix_dti"* || "${CKPT_LOWER}" == *"toymix-dti"* ]]; then
         PRETRAIN_DATASET="toymix_dti"
+    elif [[ "${CKPT_LOWER}" == *"toymix_lpm24_galactica"* || "${CKPT_LOWER}" == *"toymix-lpm24-galactica"* ]]; then
+        PRETRAIN_DATASET="toymix_lpm24_galactica"
     elif [[ "${CKPT_LOWER}" == *"toymix_lpm24"* || "${CKPT_LOWER}" == *"toymix-lpm24"* ]]; then
         PRETRAIN_DATASET="toymix_lpm24"
     elif [[ "${CKPT_LOWER}" == *"rxrx3_dti"* || "${CKPT_LOWER}" == *"rxrx3-dti"* ]]; then
@@ -138,6 +140,7 @@ if [[ -z "${FINETUNING_CONFIG:-}" ]]; then
         toymix_dti_10k_filtered) FINETUNING_CONFIG="admet_toymix_dti_10k_filtered" ;; # sub_module: dti
         toymix_dti_filtered) FINETUNING_CONFIG="admet_toymix_dti_filtered" ;; # sub_module: dti
         toymix_lpm24)   FINETUNING_CONFIG="admet_toymix_lpm24" ;;     # sub_module: lpm24
+        toymix_lpm24_galactica) FINETUNING_CONFIG="admet_toymix_lpm24" ;; # same head shapes (768-d), reuse pubmedbert finetuning config
         rxrx3_dti)      FINETUNING_CONFIG="admet_rxrx3_dti" ;;       # sub_module: dti
         toymix_rxrx3_dti) FINETUNING_CONFIG="admet_toymix_rxrx3_dti" ;;  # sub_module: dti
         largemix_rxrx3_dti) FINETUNING_CONFIG="admet_largemix_rxrx3_dti" ;; # sub_module: dti
@@ -173,7 +176,7 @@ for task in "${ADMET_TASKS[@]}"; do
         ++finetuning.task=${task} \
         ++datamodule.args.tdc_benchmark_names=${task} \
         +finetuning=${FINETUNING_CONFIG} \
-        ++finetuning.pretrained_model=${CKPT} \
+        ++finetuning.pretrained_model="'${CKPT}'" \
         ++finetuning.unfreeze_pretrained_depth=${UNFREEZE_DEPTH} \
         ++finetuning.epoch_unfreeze_all=${EPOCH_UNFREEZE_ALL} \
         ++finetuning.finetuning_head.in_dim=${FINETUNE_DIM} \

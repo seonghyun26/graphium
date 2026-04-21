@@ -81,7 +81,7 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-48}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
-    pairmixer_auto|pairmixer_12M|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)
+    pairmixer_auto|pairmixer_12M|pairmixer_16M|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)
         ;;  # dims, depth, batch size all in YAML configs
     *)
         echo "Error: unknown model '${MODEL}'."
@@ -262,6 +262,12 @@ case "${DATASET}" in
         ARCHITECTURE=toymix
         [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
         ;;
+    toymix_lpm24_galactica)
+        TASKS=toymix_lpm24_galactica
+        TRAINING=toymix_lpm24_galactica
+        ARCHITECTURE=toymix
+        [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
+        ;;
     *)
         echo "Error: unknown dataset '${DATASET}'."
         exit 1
@@ -295,13 +301,13 @@ case "${MODEL}" in
     pairformer_17M)  DIM_FLAGS="" ;;  # dims set in model config
     pairformer_52M)  DIM_FLAGS="" ;;  # dims set in model config
     pairformer_boltz)  DIM_FLAGS="" ;;  # dims set in model config
-    pairmixer_auto|pairmixer_12M|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)  DIM_FLAGS="" ;;
+    pairmixer_auto|pairmixer_12M|pairmixer_16M|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)  DIM_FLAGS="" ;;
 esac
 
 # ── Optional: sample_size for dataset size ablation ──────────────────────────
 SAMPLE_FLAGS=""
 if [[ -n "${SAMPLE_SIZE:-}" ]]; then
-    if [[ "${DATASET}" == "toymix" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "toymix_lpm24" ]]; then
+    if [[ "${DATASET}" == "toymix" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "toymix_lpm24" || "${DATASET}" == "toymix_lpm24_galactica" ]]; then
         for t in qm9 tox21 zinc; do
             SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.${t}.sample_size=${SAMPLE_SIZE}"
         done
@@ -319,7 +325,7 @@ if [[ -n "${SAMPLE_SIZE:-}" ]]; then
     if [[ "${DATASET}" == "dti_pactivity" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.dti_pactivity.sample_size=${SAMPLE_SIZE}"
     fi
-    if [[ "${DATASET}" == "lpm24" || "${DATASET}" == "toymix_lpm24" ]]; then
+    if [[ "${DATASET}" == "lpm24" || "${DATASET}" == "toymix_lpm24" || "${DATASET}" == "toymix_lpm24_galactica" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.lpm24.sample_size=${SAMPLE_SIZE}"
     fi
 fi
@@ -334,7 +340,7 @@ fi
 # Models with dedicated configs set depth internally; don't override via CLI.
 DEPTH_FLAGS=""
 case "${MODEL}" in
-    gpspp_800M|gpspp_800M_moe|gpspp_768|pairformer|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_auto|pairmixer_12M|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)
+    gpspp_800M|gpspp_800M_moe|gpspp_768|pairformer|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_auto|pairmixer_12M|pairmixer_16M|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)
         ;;  # depth comes from model config
     *)
         DEPTH_FLAGS="++architecture.gnn.depth=${GNN_DEPTH}"

@@ -58,7 +58,12 @@ def _extract_pretrain_dataset(tags) -> str:
     if not tags or not isinstance(tags, (list, tuple)):
         return None
     skip = {"finetune", "scratch", "admet", "moe", "pretrain", "arch_comparison",
-            "speed_benchmark", "scratch_benchmark"}
+            "speed_benchmark", "scratch_benchmark",
+            # Downstream benchmark identifiers (not pretrain datasets)
+            "polaris_admet", "polaris_admet_test", "dti_eval", "belka",
+            # Experiment-specific tags
+            "sweep", "probe_vs_ft", "rep5", "linear_probe",
+            "norm_ablation", "no_norm"}
     # First tag is model name; skip it and known keywords
     candidates = [t for t in tags[1:] if t not in skip]
     return candidates[0] if candidates else None

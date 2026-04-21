@@ -1,0 +1,9 @@
+# @package _global_
+# Training hyperparameters for toymix + LPM-24 (Galactica).
+# Identical to training/toymix_lpm24.yaml -- kept as a separate file so the
+# Hydra auto-resolved groups (training/accelerator/${training}_${accel},
+# training/model/${training}_${model}) land on the galactica-specific variants.
+
+defaults:
+  - toymix_lpm24
+  - _self_
