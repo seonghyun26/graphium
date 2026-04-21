@@ -77,13 +77,17 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-24}
         BATCH_SIZE=${BATCH_SIZE:-16}
         ;;
+    pairmixer_100M)
+        # D_s=256, D_z=448, depth=20 → ~100M. Pair mem ~3x of 40M; halve bs.
+        BATCH_SIZE=${BATCH_SIZE:-6}
+        ;;
     pairmixer_boltz)
         DIM=${DIM:-384}
         GNN_DEPTH=${GNN_DEPTH:-48}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
     *)
-        echo "Error: unknown model '${MODEL}'. Choose from: gcn, mpnn, gpspp, gpspp_800M, pairformer_17M, pairformer_52M, pairformer_boltz, pairmixer_10M, pairmixer_40M, pairmixer_boltz"
+        echo "Error: unknown model '${MODEL}'. Choose from: gcn, mpnn, gpspp, gpspp_800M, pairformer_17M, pairformer_52M, pairformer_boltz, pairmixer_10M, pairmixer_20M, pairmixer_40M, pairmixer_100M, pairmixer_boltz"
         exit 1
         ;;
 esac
@@ -103,6 +107,7 @@ case "${MODEL}" in
     pairmixer_10M)    DIM_FLAGS="" ;;  # dims set in model config
     pairmixer_20M)    DIM_FLAGS="" ;;  # dims set in model config
     pairmixer_40M)    DIM_FLAGS="" ;;  # dims set in model config
+    pairmixer_100M)   DIM_FLAGS="" ;;  # dims set in model config
     pairmixer_boltz)  DIM_FLAGS="" ;;  # pairformer_boltz sets dims in model config
 esac
 
@@ -110,7 +115,7 @@ esac
 # Models with dedicated configs (gpspp_800M, pairformer_*, pairmixer_*) get
 # dims/depth from their YAML — don't override via CLI.
 case "${MODEL}" in
-    gpspp_800M|pairmixer_auto|pairmixer_12M|pairmixer_16M|pairmixerpp_12M|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_10M|pairmixer_20M|pairmixer_40M|pairmixer_boltz)
+    gpspp_800M|pairmixer_auto|pairmixer_12M|pairmixer_16M|pairmixerpp_12M|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_10M|pairmixer_20M|pairmixer_40M|pairmixer_100M|pairmixer_boltz)
         ARCH_FLAGS=""
         DATAMODULE_FLAGS="++datamodule.args.batch_size_training=${BATCH_SIZE}"
         echo "=== Training ${MODEL} from scratch on ADMET (config defaults) ==="

@@ -1,0 +1,32 @@
+# @package _global_
+
+# PairMixer XL (~100M params) with the ToyMix + BBBC047 dataset.
+#
+# Scaled down from toymix_bbbc047_pairmixer_40M:
+#   - pair_dim: 256 -> 448 -> pair-tensor memory is ~3.06x larger
+#   - batch_size: 6 -> 3 (halved from 40M; combined with 8x grad-accum keeps
+#     effective batch at 24, matching 40M's 6*4).
+#   - bbbc047 heads (672-dim label space) are memory-heavy on their own, so
+#     per-step bs stays small even at the expense of more accumulation steps.
+constants:
+  name: toymix_bbbc047_pairmixer_100M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_bbbc047/
+
+datamodule:
+  args:
+    batch_size_training: 3       # 40M ran bs=6 at D_z=256; D_z=448 is ~3x pair memory.
+    batch_size_inference: 3
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_bbbc047/pairmixer_100M/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed        # PairMixer triangle ops overflow fp16; bf16 keeps fp32-range exponents.
+    accumulate_grad_batches: 8   # effective batch = 24 (matches 40M's 6*4).

@@ -1,0 +1,24 @@
+# @package _global_
+
+# PairMixer XL (~100M params) with the ToyMix dataset.
+constants:
+  name: toymix_pairmixer_100M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: ../datacache/neurips2023-small/
+
+datamodule:
+  args:
+    batch_size_training: 6       # 40M ran bs=16 at D_z=256; D_z=448 is ~3x pair memory.
+    batch_size_inference: 6
+    num_workers: 0
+    persistent_workers: false
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/small-dataset/pairmixer_100M/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    precision: bf16-mixed        # PairMixer triangle ops overflow fp16; bf16 keeps fp32-range exponents

@@ -81,7 +81,7 @@ case "${MODEL}" in
         GNN_DEPTH=${GNN_DEPTH:-48}
         BATCH_SIZE=${BATCH_SIZE:-32}
         ;;
-    pairmixer_auto|pairmixer_12M|pairmixer_16M|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)
+    pairmixer_auto|pairmixer_12M|pairmixer_16M|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_100M|pairmixer_boltz|pairmixer_boltz_moe)
         ;;  # dims, depth, batch size all in YAML configs
     *)
         echo "Error: unknown model '${MODEL}'."
@@ -301,7 +301,7 @@ case "${MODEL}" in
     pairformer_17M)  DIM_FLAGS="" ;;  # dims set in model config
     pairformer_52M)  DIM_FLAGS="" ;;  # dims set in model config
     pairformer_boltz)  DIM_FLAGS="" ;;  # dims set in model config
-    pairmixer_auto|pairmixer_12M|pairmixer_16M|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)  DIM_FLAGS="" ;;
+    pairmixer_auto|pairmixer_12M|pairmixer_16M|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_100M|pairmixer_boltz|pairmixer_boltz_moe)  DIM_FLAGS="" ;;
 esac
 
 # ── Optional: sample_size for dataset size ablation ──────────────────────────
@@ -340,7 +340,7 @@ fi
 # Models with dedicated configs set depth internally; don't override via CLI.
 DEPTH_FLAGS=""
 case "${MODEL}" in
-    gpspp_800M|gpspp_800M_moe|gpspp_768|pairformer|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_auto|pairmixer_12M|pairmixer_16M|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_boltz|pairmixer_boltz_moe)
+    gpspp_800M|gpspp_800M_moe|gpspp_768|pairformer|pairformer_17M|pairformer_52M|pairformer_boltz|pairmixer_auto|pairmixer_12M|pairmixer_16M|pairmixer_10M|pairmixer_10M_vn|pairmixer_20M|pairmixer_20M_pairinit_*|pairmixer_40M|pairmixer_100M|pairmixer_boltz|pairmixer_boltz_moe)
         ;;  # depth comes from model config
     *)
         DEPTH_FLAGS="++architecture.gnn.depth=${GNN_DEPTH}"

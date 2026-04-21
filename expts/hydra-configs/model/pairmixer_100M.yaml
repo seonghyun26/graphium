@@ -1,0 +1,57 @@
+# @package _global_
+# PairMixer XL configuration (~100M parameters)
+#
+# D_s=256, D_z=448, depth=20 → ~100M params
+#   pair-track backbone: 20 layers * 24 * D_z^2 ≈ 96.3M
+#   extras (pre_nn, OPM, graph_output_nn, task heads) ≈ 3-4M
+#
+# Scaling rationale (from pairmixer_12M search findings):
+#   "D_z width > depth at fixed budget" → favour wider pair track over more layers.
+#   Going from 40M (D_z=256, depth=24) to 100M, we widen D_z by 1.75x and trim
+#   depth (24 → 20) rather than deepening to depth=48 at the same width.
+#   Per-sample triangle cost: 20 * 448^2 vs 24 * 256^2 → ~2.55x of 40M.
+#
+# Reference: Ouyang-Zhang et al., arXiv:2510.18870
+
+architecture:
+  pre_nn:
+    out_dim: 256
+    hidden_dims: 256
+
+  pre_nn_edges:
+    out_dim: 256                 # Match pair_dim feed (down-projected inside the layer)
+    hidden_dims: 128
+    depth: 2
+    activation: relu
+    last_activation: none
+    dropout: 0.02
+    normalization: layer_norm
+    last_normalization: layer_norm
+    residual_type: none
+
+  gnn:
+    in_dim: 256
+    out_dim: 256
+    hidden_dims: 256
+    in_dim_edges: 256            # Must match pre_nn_edges.out_dim
+    depth: 20
+    residual_type: none           # s_backbone = s_init in PairMixer; residual would double them
+    virtual_node: logsum
+    layer_type: 'pyg:pairmixer'
+    layer_kwargs:
+      pair_dim: 448              # Main capacity lever (1.75x of 40M)
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      # ---- Speed / memory ----
+      # Pair tensor at D_z=448 is 3.06x memory of 40M's D_z=256 -> keep grad ckpt ON.
+      use_checkpoint: true
+      compile_mode: pair_track
+
+  graph_output_nn:
+    graph:
+      pair_dim: 448              # Must match gnn.layer_kwargs.pair_dim
+      pair_pool: stats           # level_in_dim = 6 * pair_dim = 2688
+      node_pooling: [max]
+      hidden_dims: 256
+      out_dim: 512
