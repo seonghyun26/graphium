@@ -1,0 +1,37 @@
+# @package _global_
+
+# PairMixer XL (~100M params) with the
+# ToyMix + DTI (ESM-C v2) + LPM-24 (GPT embedding) + BBBC047 dataset.
+#
+# Scaling vs siblings:
+#   - pair_dim 448 vs 12M's 224 → pair-tensor memory ~4x larger per sample.
+#   - Three heavy regression heads (dti 1152 + lpm24 1536 + bbbc047 672) on
+#     top of ToyMix keep the per-step budget tight; halve bs from the 12M
+#     sibling (8 → 2) and push accumulation up to 16 so the effective batch
+#     (2*16=32) sits between toymix_bbbc047_pairmixer_100M (24) and
+#     toymix_pairmixer_100M runs.
+constants:
+  name: toymix_esmc_lpm24_bbbc047_pairmixer_100M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_esmc_lpm24_bbbc047/
+
+datamodule:
+  args:
+    batch_size_training: 2
+    batch_size_inference: 2
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 8
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_esmc_lpm24_bbbc047/pairmixer_100M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 20
+    save_top_k: -1
+  trainer:
+    precision: bf16-mixed        # PairMixer triangle ops overflow fp16; bf16 keeps fp32-range exponents.
+    accumulate_grad_batches: 16  # effective batch = 32

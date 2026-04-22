@@ -1,0 +1,31 @@
+# @package _global_
+
+# PairMixer 12M with the ToyMix + L+M-24 OpenAI-caption dataset (1536-d head).
+# Batch size halved vs PubMedBERT 768-d variant since the lpm24 task head is
+# 2x wider; bump up after profiling on the target GPU.
+constants:
+  name: toymix_lpm24_litopenai_pairmixer_12M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: ../datacache/toymix-lpm24-litopenai/
+
+datamodule:
+  args:
+    batch_size_training: 48
+    batch_size_inference: 48
+    dataloading_from: ram
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/toymix-lpm24-litopenai/pairmixer_12M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 20           # aligns with check_val_every_n_epoch=20 (linear-probe cadence)
+    save_top_k: -1               # keep every 20-epoch snapshot for post-hoc probing
+  trainer:
+    precision: bf16-mixed
+    accumulate_grad_batches: 2   # effective batch = 96 (matches PubMedBERT variant)

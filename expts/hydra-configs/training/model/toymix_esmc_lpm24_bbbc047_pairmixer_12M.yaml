@@ -1,0 +1,37 @@
+# @package _global_
+
+# PairMixer 12M (search-validated) with the
+# ToyMix + DTI (ESM-C v2) + LPM-24 (GPT embedding) + BBBC047 dataset.
+#
+# Per-step batch is small because three heavy regression heads run in parallel:
+#   dti      → 1152-dim
+#   lpm24    → 1536-dim  (OpenAI text-embedding-3-small)
+#   bbbc047  →  672-dim
+# That's ~3360 extra out-dim on top of ToyMix. Combined with PairMixer's O(N²)
+# pair tensor this forces bs≪bbbc047's bs=12. Grad-accum keeps the effective
+# batch comparable to the BBBC047-only 12M sibling (48).
+constants:
+  name: toymix_esmc_lpm24_bbbc047_pairmixer_12M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_esmc_lpm24_bbbc047/
+
+datamodule:
+  args:
+    batch_size_training: 8
+    batch_size_inference: 8
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 8
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_esmc_lpm24_bbbc047/pairmixer_12M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 20           # aligns with check_val_every_n_epoch=20 (linear-probe cadence)
+    save_top_k: -1               # keep every 20-epoch snapshot for post-hoc probing
+  trainer:
+    precision: bf16-mixed        # PairMixer triangle ops overflow fp16
+    accumulate_grad_batches: 6   # effective batch = 48
