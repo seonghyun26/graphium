@@ -1,0 +1,39 @@
+# @package _global_
+
+# PairMixer ~50M with the combined ToyMix + DTI (ESM-C v2) + LPM-24 (OpenAI
+# text-embedding-3-small, 1536-d) + BBBC047 (672-d) dataset.
+#
+# Three heavy regression heads stack on top of ToyMix:
+#   dti      → 1152-dim
+#   lpm24    → 1536-dim  (OpenAI captions via text-embedding-3-small)
+#   bbbc047  →  672-dim
+# Combined with PairMixer's O(N^2) pair tensor and D_z=288 (1.27x 40M),
+# this forces bs lower than the 12M anchor (bs=8). Grad-accum keeps the
+# effective batch at the 12M/40M sibling target of ~48.
+#
+# DDP launch (two GPUs) doubles the effective batch again to ~96.
+constants:
+  name: toymix_esmc_lpm24_bbbc047_pairmixer_50M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_esmc_lpm24_bbbc047/
+
+datamodule:
+  args:
+    batch_size_training: 4       # 12M bs=8 / ~1.27 pair-memory -> ~6; rounded to 4 for 3-head headroom
+    batch_size_inference: 4
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 8
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_esmc_lpm24_bbbc047/pairmixer_50M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 20           # aligns with check_val_every_n_epoch=20
+    save_top_k: -1
+  trainer:
+    precision: bf16-mixed        # triangle ops overflow fp16
+    accumulate_grad_batches: 12  # single-GPU eff batch = 48; under DDP (devices=2) eff = 96
