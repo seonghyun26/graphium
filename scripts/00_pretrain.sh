@@ -340,7 +340,7 @@ if [[ -n "${SAMPLE_SIZE:-}" ]]; then
     if [[ "${DATASET}" == "dti_pactivity" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.dti_pactivity.sample_size=${SAMPLE_SIZE}"
     fi
-    if [[ "${DATASET}" == "lpm24" || "${DATASET}" == "toymix_lpm24" || "${DATASET}" == "toymix_lpm24_galactica" || "${DATASET}" == "toymix_esmc_lpm24_bbbc047" ]]; then
+    if [[ "${DATASET}" == "lpm24" || "${DATASET}" == "toymix_lpm24" || "${DATASET}" == "toymix_lpm24_galactica" || "${DATASET}" == "toymix_lpm24_litopenai" || "${DATASET}" == "toymix_esmc_lpm24_bbbc047" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.lpm24.sample_size=${SAMPLE_SIZE}"
     fi
     if [[ "${DATASET}" == "bbbc047" || "${DATASET}" == "toymix_bbbc047" || "${DATASET}" == "toymix_bbbc047_filtered" || "${DATASET}" == "toymix_esmc_lpm24_bbbc047" ]]; then

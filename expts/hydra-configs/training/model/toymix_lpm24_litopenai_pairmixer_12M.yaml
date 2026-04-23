@@ -13,8 +13,8 @@ constants:
 
 datamodule:
   args:
-    batch_size_training: 48
-    batch_size_inference: 48
+    batch_size_training: 32
+    batch_size_inference: 32
     dataloading_from: ram
     num_workers: 4
     persistent_workers: true
@@ -28,4 +28,4 @@ trainer:
     save_top_k: -1               # keep every 20-epoch snapshot for post-hoc probing
   trainer:
     precision: bf16-mixed
-    accumulate_grad_batches: 2   # effective batch = 96 (matches PubMedBERT variant)
+    accumulate_grad_batches: 2   # effective batch = 64 (phys=32 for memory headroom)
