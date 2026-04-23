@@ -1,0 +1,30 @@
+# @package _global_
+
+# PairMixer ~50M with the ToyMix + DTI (ESM-C v2) dataset. Batch sizes derived
+# from the 40M anchor (bs=4, accum=4 -> eff 16) scaled by ~1/1.27 for the
+# wider pair tensor. DDP launch (2 GPUs) doubles the effective batch again.
+constants:
+  name: toymix_dti_esmc_v2_pairmixer_50M
+  seed: 42
+  max_epochs: 100
+  data_dir: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix-dti-esmc-v2/
+
+datamodule:
+  args:
+    batch_size_training: 3       # 40M bs=4 / 1.27 ≈ 3; esmc head (1152-d) is memory-heavier than pure out_dim scaling predicts
+    batch_size_inference: 3
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix-dti-esmc-v2/pairmixer_50M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 20           # aligns with check_val_every_n_epoch=20
+    save_top_k: -1
+  trainer:
+    precision: bf16-mixed        # triangle ops overflow fp16
+    accumulate_grad_batches: 6   # single-GPU eff batch = 18; under DDP (devices=2) eff = 36

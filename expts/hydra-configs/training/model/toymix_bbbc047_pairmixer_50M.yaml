@@ -1,0 +1,30 @@
+# @package _global_
+
+# PairMixer ~50M with the ToyMix + BBBC047 dataset. Batch sizes derived from
+# the 40M anchor (bs=6, accum=4 -> eff 24) scaled by ~1/1.27 for the wider
+# pair tensor. DDP launch (2 GPUs) doubles the effective batch again.
+constants:
+  name: toymix_bbbc047_pairmixer_50M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_bbbc047/
+
+datamodule:
+  args:
+    batch_size_training: 4       # 40M bs=6 / 1.27 ≈ 5; rounded down for headroom
+    batch_size_inference: 4
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_bbbc047/pairmixer_50M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 20
+    save_top_k: -1
+  trainer:
+    precision: bf16-mixed
+    accumulate_grad_batches: 6   # single-GPU eff batch = 24; under DDP (devices=2) eff = 48

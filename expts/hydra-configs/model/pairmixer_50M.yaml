@@ -1,0 +1,59 @@
+# @package _global_
+# PairMixer ~50M parameters — interpolates between 40M and 100M by widening
+# D_z rather than deepening (established scaling rule: width > depth).
+#
+# D_s=256, D_z=288, depth=24
+#   pair-track backbone: 24 layers * 24 * 288^2 ≈ 47.8M
+#   extras (pre_nn, OPM, graph_output_nn, task heads) ≈ 2-3M
+#   total ≈ 50M parameters.
+#
+# Per-sample triangle cost: 24 * 288^2 = 1.26x of 40M (24 * 256^2), so
+# memory during the triangle mul / attn ops is ~1.27x the 40M anchor.
+# Batch sizes in the matching `training/model/*_pairmixer_50M.yaml` files
+# are derived from the 40M anchors divided by ~1.3 and rounded down.
+#
+# Reference: Ouyang-Zhang et al., arXiv:2510.18870
+
+architecture:
+  pre_nn:
+    out_dim: 256
+    hidden_dims: 256
+
+  pre_nn_edges:
+    out_dim: 288                 # Match pair_dim so edge embeddings feed cleanly into pair init
+    hidden_dims: 128
+    depth: 2
+    activation: relu
+    last_activation: none
+    dropout: 0.02
+    normalization: layer_norm
+    last_normalization: layer_norm
+    residual_type: none
+
+  gnn:
+    in_dim: 256
+    out_dim: 256
+    hidden_dims: 256
+    in_dim_edges: 288            # Must match pre_nn_edges.out_dim
+    depth: 24
+    residual_type: none           # PairMixer doesn't update node features (s_backbone=s_init);
+                                  # simple residual would double them every layer → bf16 overflow.
+    virtual_node: logsum          # Learnable global node; aids graph-level readout
+    layer_type: 'pyg:pairmixer'
+    layer_kwargs:
+      pair_dim: 288              # Main capacity lever (1.125x of 40M's 256)
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      # ---- Speed / memory ----
+      # Pair tensor at D_z=288 is 1.27x memory of 40M's D_z=256 — keep grad ckpt ON.
+      use_checkpoint: true
+      compile_mode: pair_track
+
+  graph_output_nn:
+    graph:
+      pair_dim: 288              # Must match gnn.layer_kwargs.pair_dim
+      pair_pool: stats           # level_in_dim = 6 * pair_dim = 1728
+      node_pooling: [max]
+      hidden_dims: 256
+      out_dim: 512

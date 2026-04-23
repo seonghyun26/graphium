@@ -45,12 +45,35 @@ def _tqdm_joblib(tqdm_object):
         tqdm_object.close()
 
 
+_FEATURIZE_FIRST_ERROR_PRINTED = False
+
+
 def _featurize_one(smiles: str, smiles_transformer) -> Any:
+    """Run graphium's smiles_transformer. Reports the first failure's details
+    to stderr — graphium can either raise OR return an error string, so both
+    paths are surfaced."""
+    global _FEATURIZE_FIRST_ERROR_PRINTED
     try:
         g = smiles_transformer(smiles, mask_nan=0.0)
     except Exception:
+        if not _FEATURIZE_FIRST_ERROR_PRINTED:
+            _FEATURIZE_FIRST_ERROR_PRINTED = True
+            import sys, traceback
+            print(
+                f"\n  [pairmixer] first featurization EXCEPTION on SMILES={smiles!r}:",
+                file=sys.stderr,
+            )
+            traceback.print_exc(file=sys.stderr)
         return None
     if g is None or isinstance(g, str):
+        if not _FEATURIZE_FIRST_ERROR_PRINTED:
+            _FEATURIZE_FIRST_ERROR_PRINTED = True
+            import sys
+            print(
+                f"\n  [pairmixer] first featurization SENTINEL on SMILES={smiles!r}:"
+                f"\n      returned = {type(g).__name__}  value = {g!r}",
+                file=sys.stderr,
+            )
         return None
     return g
 
@@ -147,9 +170,24 @@ class PairMixerEncoder(MoleculeEncoder):
 
         self._datamodule = _build_datamodule(self.model_name)
         self._torch_device = torch.device(self.device_str)
-        predictor = PredictorModule.load_pretrained_model(
-            name_or_path=self.ckpt_path, device=str(self._torch_device),
-        )
+        # PyTorch 2.6 flipped ``torch.load``'s default to ``weights_only=True``,
+        # which rejects graphium's pickled-class ckpts. Our checkpoints are
+        # trusted (we trained them), so force the legacy behavior just for this
+        # load and restore torch.load immediately after.
+        _orig_load = torch.load
+        def _trusted_load(*args, **kwargs):
+            # Force-override (not setdefault) because Lightning's cloud_io._load
+            # passes ``weights_only=True`` explicitly, which setdefault wouldn't
+            # replace. Safe within this narrowly-scoped monkey-patch.
+            kwargs["weights_only"] = False
+            return _orig_load(*args, **kwargs)
+        torch.load = _trusted_load
+        try:
+            predictor = PredictorModule.load_pretrained_model(
+                name_or_path=self.ckpt_path, device=str(self._torch_device),
+            )
+        finally:
+            torch.load = _orig_load
         backbone = predictor.model
         backbone.to(self._torch_device)
         if "graph" not in backbone.task_heads.graph_output_nn:

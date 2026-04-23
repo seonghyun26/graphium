@@ -13,8 +13,8 @@ constants:
 
 datamodule:
   args:
-    batch_size_training: 32
-    batch_size_inference: 32
+    batch_size_training: 24
+    batch_size_inference: 24
     dataloading_from: ram
     num_workers: 4
     persistent_workers: true
