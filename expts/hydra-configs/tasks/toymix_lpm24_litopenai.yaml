@@ -7,9 +7,10 @@ datamodule:
   args:
     task_specific_args:
       lpm24:
-        # Unfiltered 159,885-caption file (not size-filtered like
-        # lpm24_pubmedbert_max100.csv); bump batch size only after profiling.
-        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/litopenai_lpm24cap_small.csv
+        # Size-filtered to <=100 heavy atoms (matches the pubmedbert/esmc/bbbc
+        # siblings; drops the 18.9% tail above 100 atoms that otherwise OOMs
+        # PairMixer's O(N^2) pair tensor — worst-case molecule is 468 atoms).
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/litopenai_lpm24cap_small_max100.parquet
         smiles_col: "SMILES_nometa"
         label_cols: feature_*
         split_val: 0.1

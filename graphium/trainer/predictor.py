@@ -11,8 +11,11 @@ Refer to the LICENSE file for the full terms and conditions.
 --------------------------------------------------------------------------------
 """
 
+import os
+import sys
 import time
 from copy import deepcopy
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import lightning
@@ -778,8 +781,41 @@ class PredictorModule(lightning.LightningModule):
     def on_test_batch_end(self, outputs: Any, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
         self.test_step_outputs.append(outputs)
 
+    def _dump_test_predictions(self) -> None:
+        """Save concatenated test preds+targets per task to ``./predictions.pt``.
+
+        Consumed by ``scripts/aggregate_admet_ensemble.py`` to build
+        probability-averaged ensemble metrics across N seed runs.
+        """
+        outputs = self.test_step_outputs
+        if not outputs:
+            return
+        first = outputs[0]
+        if not isinstance(first, dict) or "preds" not in first or "targets" not in first:
+            return
+        dump: Dict[str, Dict[str, torch.Tensor]] = {}
+        for task in first["preds"].keys():
+            try:
+                preds = torch.cat([o["preds"][task].detach().cpu() for o in outputs], dim=0)
+                targets = torch.cat([o["targets"][task].detach().cpu() for o in outputs], dim=0)
+            except Exception as exc:
+                print(f"  [predictor] could not dump task {task!r}: {exc}", file=sys.stderr)
+                continue
+            dump[task] = {"preds": preds, "targets": targets}
+        if not dump:
+            return
+        out_path = Path("predictions.pt").resolve()
+        torch.save(dump, out_path)
+        print(f"  [predictor] test predictions saved -> {out_path}", file=sys.stderr)
+
     def on_test_epoch_end(self) -> None:
         metrics_logs = self._general_epoch_end(outputs=self.test_step_outputs, step_name="test", device="cpu")
+        # Opt-in raw-prediction dump for ensemble aggregation downstream. Set
+        # ``GRAPHIUM_DUMP_PREDS=1`` to save {task: {preds, targets}} to
+        # ``./predictions.pt`` (relative to Hydra's run dir). Off by default so
+        # normal finetune runs stay unchanged.
+        if os.environ.get("GRAPHIUM_DUMP_PREDS") == "1":
+            self._dump_test_predictions()
         self.test_step_outputs.clear()
         concatenated_metrics_logs = self.task_epoch_summary.concatenate_metrics_logs(metrics_logs)
         self._log_primary_score(concatenated_metrics_logs, "test")

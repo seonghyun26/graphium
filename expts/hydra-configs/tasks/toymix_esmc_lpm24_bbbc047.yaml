@@ -21,7 +21,7 @@ datamodule:
           normalize_val_test: True
           method: "normal"
       lpm24:
-        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/litopenai_lpm24cap_small.csv
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/litopenai_lpm24cap_small_max100.parquet
         smiles_col: "SMILES_nometa"
         label_cols: feature_*
         split_val: 0.1

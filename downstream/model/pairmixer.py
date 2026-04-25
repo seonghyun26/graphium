@@ -106,6 +106,13 @@ def _featurize_smiles(
 
 def _build_datamodule(model_name: str) -> Any:
     """Hydra-compose dti_eval so we get the same featurizer the ckpt was trained with."""
+    datamodule, _ = _build_datamodule_and_cfg(model_name)
+    return datamodule
+
+
+def _build_datamodule_and_cfg(model_name: str) -> Tuple[Any, dict]:
+    """Same compose as `_build_datamodule`, but also returns the resolved cfg dict
+    so a scratch (random-init) backbone can be built via `load_architecture`."""
     from hydra import compose, initialize_config_dir
     from omegaconf import OmegaConf
 
@@ -127,7 +134,7 @@ def _build_datamodule(model_name: str) -> Any:
         )
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     cfg_dict, accelerator_type = load_accelerator(cfg_dict)
-    return load_datamodule(cfg_dict, accelerator_type)
+    return load_datamodule(cfg_dict, accelerator_type), cfg_dict
 
 
 class PairMixerEncoder(MoleculeEncoder):
@@ -138,6 +145,8 @@ class PairMixerEncoder(MoleculeEncoder):
     PairMixer, GPS++, GCN, etc. The name sticks for historical reasons.
     """
 
+    SCRATCH_SENTINELS = ("scratch", "random", "none")
+
     def __init__(
         self, ckpt_path: str, *,
         model_name: str = "pairmixer_12M",
@@ -146,17 +155,21 @@ class PairMixerEncoder(MoleculeEncoder):
         featurize_n_jobs: int = 8,
         ckpt_tag: str | None = None,
     ):
-        if not Path(ckpt_path).exists():
+        self.is_scratch = str(ckpt_path).lower() in self.SCRATCH_SENTINELS
+        if not self.is_scratch and not Path(ckpt_path).exists():
             raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
         self.ckpt_path = str(ckpt_path)
         self.model_name = model_name
         self.device_str = device
         self.batch_size = batch_size
         self.featurize_n_jobs = featurize_n_jobs
-        self.ckpt_tag = ckpt_tag or Path(ckpt_path).stem
-
-        ckpt_hash = hashlib.sha256(self.ckpt_path.encode()).hexdigest()[:12]
-        self.encoder_tag = f"{model_name}_{ckpt_hash}"
+        if self.is_scratch:
+            self.ckpt_tag = ckpt_tag or "scratch"
+            self.encoder_tag = f"{model_name}_scratch"
+        else:
+            self.ckpt_tag = ckpt_tag or Path(ckpt_path).stem
+            ckpt_hash = hashlib.sha256(self.ckpt_path.encode()).hexdigest()[:12]
+            self.encoder_tag = f"{model_name}_{ckpt_hash}"
         self.out_dim = -1  # finalized on first forward pass (depends on head config)
 
         self._datamodule = None
@@ -166,29 +179,37 @@ class PairMixerEncoder(MoleculeEncoder):
     def _ensure_backbone(self):
         if self._backbone is not None:
             return
-        from graphium.trainer.predictor import PredictorModule
 
-        self._datamodule = _build_datamodule(self.model_name)
         self._torch_device = torch.device(self.device_str)
-        # PyTorch 2.6 flipped ``torch.load``'s default to ``weights_only=True``,
-        # which rejects graphium's pickled-class ckpts. Our checkpoints are
-        # trusted (we trained them), so force the legacy behavior just for this
-        # load and restore torch.load immediately after.
-        _orig_load = torch.load
-        def _trusted_load(*args, **kwargs):
-            # Force-override (not setdefault) because Lightning's cloud_io._load
-            # passes ``weights_only=True`` explicitly, which setdefault wouldn't
-            # replace. Safe within this narrowly-scoped monkey-patch.
-            kwargs["weights_only"] = False
-            return _orig_load(*args, **kwargs)
-        torch.load = _trusted_load
-        try:
-            predictor = PredictorModule.load_pretrained_model(
-                name_or_path=self.ckpt_path, device=str(self._torch_device),
-            )
-        finally:
-            torch.load = _orig_load
-        backbone = predictor.model
+
+        if self.is_scratch:
+            from graphium.config._loader import load_architecture
+            self._datamodule, cfg = _build_datamodule_and_cfg(self.model_name)
+            model_class, model_kwargs = load_architecture(cfg, in_dims=self._datamodule.in_dims)
+            backbone = model_class(**model_kwargs)
+        else:
+            from graphium.trainer.predictor import PredictorModule
+            self._datamodule = _build_datamodule(self.model_name)
+            # PyTorch 2.6 flipped ``torch.load``'s default to ``weights_only=True``,
+            # which rejects graphium's pickled-class ckpts. Our checkpoints are
+            # trusted (we trained them), so force the legacy behavior just for this
+            # load and restore torch.load immediately after.
+            _orig_load = torch.load
+            def _trusted_load(*args, **kwargs):
+                # Force-override (not setdefault) because Lightning's cloud_io._load
+                # passes ``weights_only=True`` explicitly, which setdefault wouldn't
+                # replace. Safe within this narrowly-scoped monkey-patch.
+                kwargs["weights_only"] = False
+                return _orig_load(*args, **kwargs)
+            torch.load = _trusted_load
+            try:
+                predictor = PredictorModule.load_pretrained_model(
+                    name_or_path=self.ckpt_path, device=str(self._torch_device),
+                )
+            finally:
+                torch.load = _orig_load
+            backbone = predictor.model
+
         backbone.to(self._torch_device)
         if "graph" not in backbone.task_heads.graph_output_nn:
             raise RuntimeError(

@@ -422,7 +422,9 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
                 private=hf_private,
             ))
 
-        if wandb_cfg is not None:
+        if wandb_cfg is not None and trainer.is_global_zero:
+            # Lightning's WandbLogger gives non-rank-0 ranks a DummyExperiment whose
+            # .dir is a no-op method, breaking os.path.join inside save_params_to_wandb.
             save_params_to_wandb(trainer.logger, cfg, predictor, datamodule, unresolved_config=unresolved_cfg)
 
         # Determine the max num nodes and edges in training and validation
