@@ -47,6 +47,7 @@ import graphium.cli.finetune_utils
 
 TESTING_ONLY_CONFIG_KEY = "testing_only"
 CONTINUAL_PRETRAINING_CONFIG_KEY = "continual_pretraining"
+PREPARE_DATA_ONLY_CONFIG_KEY = "prepare_data_only"
 
 
 def _extract_pretrain_dataset(tags) -> str:
@@ -313,8 +314,17 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
 
     st = timeit.default_timer()
 
-    # Initialize wandb only on first rank
-    if os.environ.get("RANK", "0") == "0":
+    # Cache-warmup mode: when launched as a single-process pre-pass before a
+    # DDP run, we only need to materialize the on-disk feature cache and
+    # exit. Skipping wandb here keeps the warmup invisible in the project
+    # history (the real DDP run logs the actual experiment).
+    prepare_data_only = bool(cfg.get(PREPARE_DATA_ONLY_CONFIG_KEY, False))
+
+    # Initialize wandb only on first rank. Lightning's subprocess_script
+    # launcher exports LOCAL_RANK to child processes; RANK is set later by
+    # torch.distributed during process-group init, so it's "0" in every
+    # child at this point — checking it would spawn one wandb run per GPU.
+    if not prepare_data_only and os.environ.get("LOCAL_RANK", "0") == "0":
         # Disable wandb if the user is not logged in.
         wandb_cfg = cfg["constants"].get("wandb")
         if wandb_cfg is not None and wandb.login() is False:
@@ -336,6 +346,13 @@ def run_training_finetuning_testing(cfg: DictConfig) -> None:
     ## Data-module
     datamodule = load_datamodule(cfg, accelerator_type)
     datamodule.prepare_data()
+
+    if prepare_data_only:
+        logger.info(
+            f"prepare_data_only=true — feature cache populated in "
+            f"{timeit.default_timer() - st:.1f}s. Skipping model/trainer init."
+        )
+        return None
 
     testing_only = cfg.get(TESTING_ONLY_CONFIG_KEY, False)
 

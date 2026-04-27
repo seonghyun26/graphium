@@ -835,16 +835,19 @@ def mol_to_adjacency_matrix(
             val = 1
         adj_val.extend([val, val])
 
+    # scipy.sparse dropped float16 support; promote to float32 for storage only.
+    sparse_dtype = np.float32 if np.dtype(dtype) == np.float16 else dtype
+
     # Convert to torch coo sparse tensor
     if len(adj_val) > 0:  # ensure tensor is not empty
         adj = coo_matrix(
             (torch.as_tensor(adj_val), torch.as_tensor(adj_idx).T.reshape(2, -1)),
             shape=(mol.GetNumAtoms(), mol.GetNumAtoms()),
-            dtype=dtype,
+            dtype=sparse_dtype,
         )
     else:
         # Special case for molecules with one atom
-        adj = coo_matrix(([], np.array([[], []])), shape=(mol.GetNumAtoms(), mol.GetNumAtoms()), dtype=dtype)
+        adj = coo_matrix(([], np.array([[], []])), shape=(mol.GetNumAtoms(), mol.GetNumAtoms()), dtype=sparse_dtype)
 
     # Add self loops
     if add_self_loop:

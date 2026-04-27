@@ -14,6 +14,7 @@ Refer to the LICENSE file for the full terms and conditions.
 # Misc
 import os
 from copy import deepcopy
+from datetime import timedelta
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Type, Union
 
 import joblib
@@ -453,9 +454,15 @@ def load_trainer(
         if _uses_ddp:
             from lightning.pytorch.strategies import DDPStrategy
 
+            # Pop a configurable rendezvous timeout (hours). Defaults to 3 h
+            # because the first launch after a config change has to featurize
+            # SMILES + cache features on every rank in parallel; the default
+            # 30-minute TCPStore timeout silently kills the slowest rank.
+            ddp_timeout_hours = float(cfg_trainer["trainer"].pop("ddp_timeout_hours", 3))
             strategy = DDPStrategy(
                 find_unused_parameters="find_unused_parameters_true" in strategy,
                 process_group_backend="cuda:nccl,cpu:gloo",
+                timeout=timedelta(hours=ddp_timeout_hours),
             )
 
     # Define the early stopping parameters
