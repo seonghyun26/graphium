@@ -47,7 +47,7 @@ case "${MODEL}" in
     *)
         echo "Error: model '${MODEL}' not supported by this script." >&2
         echo "Known: pairmixer_12M | pairmixer_50M | pairmixer_100M" >&2
-        echo "(Others need a matching training/model/toymix_esmc_lpm24_bbbc047_${MODEL}.yaml)" >&2
+        echo "(Others need a matching training/model/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_${MODEL}.yaml)" >&2
         exit 1
         ;;
 esac
@@ -67,14 +67,14 @@ LOG_DIR="${REPO_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 LOG="${LOG_DIR}/pretrain_combined_ddp4_${MODEL}_${STAMP}.log"
 
-TAGS="['${MODEL}','pretrain','toymix_esmc_lpm24_bbbc047','ddp4']"
+TAGS="['${MODEL}','pretrain','toymix_dti_esmc_v2_lpm24_litopenai_bbbc047','ddp4']"
 WANDB_FLAGS=$(source "${SCRIPT_DIR}/common.sh"; wandb_flags "${TAGS}")
 
 cat <<EOF
 == combined 4-GPU DDP pretrain ==
   model:    ${MODEL}
   gpus:     ${G0},${G1},${G2},${G3}
-  tasks:    toymix_esmc_lpm24_bbbc047  (ToyMix + DTI-ESMC-v2 + L+M-24-OpenAI + BBBC047)
+  tasks:    toymix_dti_esmc_v2_lpm24_litopenai_bbbc047  (ToyMix + DTI-ESMC-v2 + L+M-24-OpenAI + BBBC047)
   log:      ${LOG}
   extras:   ${EXTRA_FLAGS:-<none>}
 
@@ -82,7 +82,30 @@ Launching in 5 s — Ctrl-C to abort.
 EOF
 sleep 5
 
-# DDP overrides:
+# Step 1: cache warmup. Single-process pass that runs prepare_data() and
+# exits — populates the featurization + ESM-C cache so the four DDP ranks
+# below hit the cache and rendezvous within the TCPStore timeout. Skip with
+# WARMUP_SKIP=1 once the cache is known to exist.
+if [[ "${WARMUP_SKIP:-0}" != "1" ]]; then
+    echo ">> [warmup] populating feature cache on GPU ${G0} ..."
+    CUDA_VISIBLE_DEVICES=${G0} graphium-train \
+        model=${MODEL} \
+        accelerator=gpu \
+        tasks=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047 \
+        training=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047 \
+        architecture=toymix \
+        +trainer.trainer.devices=1 \
+        +prepare_data_only=true \
+        ${EXTRA_FLAGS:-} 2>&1 | tee -a "${LOG}"
+    warmup_rc=${PIPESTATUS[0]}
+    if [[ ${warmup_rc} -ne 0 ]]; then
+        echo "!! warmup failed (exit ${warmup_rc}); aborting before DDP launch." >&2
+        exit ${warmup_rc}
+    fi
+    echo ">> [warmup] done."
+fi
+
+# Step 2: DDP overrides:
 #   devices=4  -> Lightning spawns one process per visible GPU.
 #   strategy=ddp_find_unused_parameters_true
 #              -> multi-task graphs don't activate every task-head on every
@@ -90,13 +113,14 @@ sleep 5
 CUDA_VISIBLE_DEVICES=${G0},${G1},${G2},${G3} graphium-train \
     model=${MODEL} \
     accelerator=gpu \
-    tasks=toymix_esmc_lpm24_bbbc047 \
-    training=toymix_esmc_lpm24_bbbc047 \
+    tasks=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047 \
+    training=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047 \
     architecture=toymix \
     ${WANDB_FLAGS} \
     +trainer.trainer.devices=4 \
     +trainer.trainer.strategy=ddp_find_unused_parameters_true \
-    ${EXTRA_FLAGS:-} 2>&1 | tee "${LOG}"
+    ++architecture.gnn.layer_kwargs.use_checkpoint=false \
+    ${EXTRA_FLAGS:-} 2>&1 | tee -a "${LOG}"
 rc=${PIPESTATUS[0]}
 
 echo ""

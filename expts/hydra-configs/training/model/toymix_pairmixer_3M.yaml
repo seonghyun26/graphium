@@ -1,0 +1,29 @@
+# @package _global_
+
+# PairMixer 3M with the ToyMix-only dataset.
+# 3M pair tensor (D_z=128, depth=6) is ~4x lighter than 12M (D_z=224, depth=8),
+# so per-step batch is bumped 2-4x relative to the 12M anchor (bs=32).
+constants:
+  name: toymix_pairmixer_3M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: ../datacache/neurips2023-small-feat2/
+
+datamodule:
+  args:
+    batch_size_training: 64       # 12M anchor bs=32; 3M has ~4x less pair memory
+    batch_size_inference: 64
+    num_workers: 0
+    persistent_workers: false
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/small-dataset/pairmixer_3M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 20           # aligns with check_val_every_n_epoch=20 (linear-probe cadence)
+    save_top_k: -1               # keep every 20-epoch snapshot for post-hoc probing
+  trainer:
+    precision: bf16-mixed

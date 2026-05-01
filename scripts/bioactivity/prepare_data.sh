@@ -2,23 +2,31 @@
 # Build data/downstream/bioactivity/cell_bioactivity.csv from ChEMBL 33 + JUMP-CP.
 #
 # Usage:
+#   bash scripts/bioactivity/prepare_data.sh
 #   bash scripts/bioactivity/prepare_data.sh <path/to/chembl_33.db>
 #
 # Env overrides:
+#   CHEMBL_DB=datacache/chembl/chembl_33/chembl_33_sqlite/chembl_33.db
 #   JUMP_METADATA_DIR=/home/shpark/prj-molrepr/datacache/jump_cpcnn/metadata
 #   OUT_DIR=data/downstream/bioactivity
 #   SEED=0
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 eval "$(conda shell.bash hook)"
 conda activate graphium-downstream 2>/dev/null || conda activate graphium
 
-CHEMBL_DB=${1:?"Usage: $0 <chembl_33.db>"}
+CHEMBL_DB=${1:-${CHEMBL_DB:-datacache/chembl/chembl_33/chembl_33_sqlite/chembl_33.db}}
 JUMP_METADATA_DIR=${JUMP_METADATA_DIR:-/home/shpark/prj-molrepr/datacache/jump_cpcnn/metadata}
 OUT_DIR=${OUT_DIR:-../data/downstream/bioactivity}
 SEED=${SEED:-0}
+
+if [[ ! -f "${CHEMBL_DB}" ]]; then
+    echo "ERROR: ChEMBL DB not found at ${CHEMBL_DB}"
+    echo "       Pass it explicitly: bash scripts/bioactivity/prepare_data.sh /path/to/chembl_33.db"
+    exit 1
+fi
 
 mkdir -p "${OUT_DIR}"
 

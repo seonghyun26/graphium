@@ -1,0 +1,29 @@
+# @package _global_
+
+# PairMixer 3M with the ToyMix + BBBC047 dataset (672-d head).
+# 3M pair tensor is ~4x lighter than 12M, so bs bumped ~2.7x vs 12M anchor (bs=12).
+constants:
+  name: toymix_bbbc047_pairmixer_3M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_bbbc047/
+
+datamodule:
+  args:
+    batch_size_training: 32       # 12M anchor bs=12; 3M has ~4x less pair memory
+    batch_size_inference: 32
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 8
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_bbbc047/pairmixer_3M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 20
+    save_top_k: -1
+  trainer:
+    precision: bf16-mixed        # PairMixer triangle ops overflow fp16
+    accumulate_grad_batches: 2   # effective batch = 64

@@ -1,0 +1,74 @@
+# @package _global_
+# PairMixer 3M configuration — small variant scaled down from the
+# search-validated 12M recipe (`pairmixer_12M.yaml`). Same architectural
+# levers (edge_injection, virtual_node=logsum, pair_pool=stats, expanded
+# RDKit features) but ~4x smaller pair tensor.
+#
+# D_s=64, D_z=128, depth=6 → ~3M params
+#   gnn backbone:  ~2.4M (6 × PairMixerLayerPyg, 24 × D_z² ≈ 393K/layer)
+#   pre_nn:         ~5K
+#   pre_nn_edges:   ~3K
+#   graph_output:   ~0.2M (incl. task heads)
+#
+# Pre-training scheme follows the MiniMol paper (models_checkpoints/minimol_v1):
+#   lr = 4e-4, AdamW, WarmUpLinearLR, warmup_epochs=5, max_epochs=100.
+#
+# Reference: Ouyang-Zhang et al., arXiv:2510.18870 (PairMixer)
+#            Křen et al.,         arXiv:2404.14986 (MiniMol)
+
+architecture:
+  pre_nn:
+    out_dim: 64
+    hidden_dims: 64
+
+  pre_nn_edges:
+    out_dim: 32
+    hidden_dims: 32
+    depth: 2
+    activation: relu
+    last_activation: none
+    dropout: 0.02
+    normalization: layer_norm
+    last_normalization: layer_norm
+    residual_type: none
+
+  gnn:
+    in_dim: 64
+    out_dim: 64
+    hidden_dims: 64
+    in_dim_edges: 32             # Must match pre_nn_edges.out_dim
+    depth: 6
+    residual_type: none           # PairMixer doesn't update node features (s_backbone=s_init);
+                                  # simple residual would double them every layer → bf16 overflow.
+    virtual_node: logsum          # Learnable global node (MiniMol-style); aids graph-level readout
+    layer_type: 'pyg:pairmixer'
+    layer_kwargs:
+      pair_dim: 128
+      pair_dropout: 0.25
+      hidden_dim_scaling: 4.0
+      opm_hidden: 32
+      # 3M is small enough to fit comfortably without grad checkpointing.
+      use_checkpoint: false
+      compile_mode: pair_track
+      edge_injection: true       # Per-layer bond → pair projection (MiniMol-style)
+
+  graph_output_nn:
+    graph:
+      pair_dim: 128              # Must match gnn.layer_kwargs.pair_dim
+      pair_pool: stats           # graph-aware stats pooling (level_in_dim = 6*pair_dim = 768)
+      node_pooling: [max]        # concat node max-pool (+64) onto pair-stats
+      hidden_dims: 128
+      out_dim: 512
+
+# ── Expanded featurization (search-validated gain from 12M) ──────────────────
+datamodule:
+  args:
+    featurization:
+      atom_property_list_onehot: [atomic-number, group, period, total-valence, hybridization, chirality]
+      atom_property_list_float: [degree, formal-charge, radical-electron, aromatic, in-ring, mass, electronegativity, vdw-radius, num-ring]
+      edge_property_list: [bond-type-onehot, stereo, in-ring, conjugated]
+
+# ── Optimiser (MiniMol pre-training scheme) ───────────────────────────────────
+predictor:
+  optim_kwargs:
+    lr: 4.e-4

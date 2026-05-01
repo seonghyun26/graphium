@@ -1,0 +1,25 @@
+# @package _global_
+# Training overlay: toymix + pairmixer_12M with Boltz-2 REPA alignment loss.
+# Inherits all settings from toymix_pairmixer_12M and adds:
+#   - datamodule.args.boltz_pair_h5_paths : 3-shard cache produced by P2
+#   - predictor.boltz_repa_kwargs         : MLP projector + masked cosine loss
+
+defaults:
+  - toymix_pairmixer_12M
+
+datamodule:
+  args:
+    boltz_pair_h5_paths:
+      - /home/shpark/prj-molrepr/graphium/data/boltz_pair/boltz_pair.shard0.h5
+      - /home/shpark/prj-molrepr/graphium/data/boltz_pair/boltz_pair.shard1.h5
+      - /home/shpark/prj-molrepr/graphium/data/boltz_pair/boltz_pair.shard2.h5
+
+predictor:
+  boltz_repa_kwargs:
+    d_pair_g: 224       # PairMixer 12M pair_dim (architecture.gnn.layer_kwargs.pair_dim)
+    d_pair_b: 128       # Boltz-2 trunk pair channel dim (fixed)
+    loss_weight: 0.1    # auxiliary loss weight; bump to 0.3-0.5 if convergence is slow
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/small-dataset/pairmixer_12M_boltz_repa/${now:%Y-%m-%d_%H-%M-%S}/

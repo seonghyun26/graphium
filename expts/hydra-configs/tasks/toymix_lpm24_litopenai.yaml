@@ -10,7 +10,11 @@ datamodule:
         # Size-filtered to <=100 heavy atoms (matches the pubmedbert/esmc/bbbc
         # siblings; drops the 18.9% tail above 100 atoms that otherwise OOMs
         # PairMixer's O(N^2) pair tensor — worst-case molecule is 468 atoms).
-        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/litopenai_lpm24cap_small_max100.parquet
+        # ADMET-filtered: 1,740 rows (1.34%) whose canonical SMILES are present
+        # in the union of all 22 ADMET task splits (datacache/admet_smiles/
+        # admet_all_smiles.json) have been removed to prevent test-set leakage
+        # into pretraining.
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/litopenai_lpm24cap_small_max100_admetfilt.parquet
         smiles_col: "SMILES_nometa"
         label_cols: feature_*
         split_val: 0.1

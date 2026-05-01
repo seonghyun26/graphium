@@ -1,0 +1,34 @@
+# @package _global_
+
+# PairMixer 3M with the combined ToyMix + DTI (ESM-C v2) + LPM-24 (OpenAI) +
+# BBBC047 dataset. Three heavy regression heads stack on top of ToyMix:
+#   dti      → 1152-dim
+#   lpm24    → 1536-dim  (OpenAI text-embedding-3-small)
+#   bbbc047  →  672-dim
+# 3M pair tensor is ~4x lighter than 12M, so bs bumped 3x vs 12M anchor (bs=8).
+# Effective batch (per-GPU) targets the 12M sibling (~48); under DDP-4 → ~192.
+constants:
+  name: toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_3M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047/
+
+datamodule:
+  args:
+    batch_size_training: 24       # 12M anchor bs=8; 3x bump for lighter pair tensor
+    batch_size_inference: 24
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 8
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047/pairmixer_3M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 20           # aligns with check_val_every_n_epoch=20
+    save_top_k: -1
+  trainer:
+    precision: bf16-mixed        # triangle ops overflow fp16
+    accumulate_grad_batches: 2   # single-GPU eff = 48; under DDP-4 eff = 192

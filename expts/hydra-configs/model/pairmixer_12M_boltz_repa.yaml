@@ -1,0 +1,7 @@
+# @package _global_
+# PairMixer 12M with Boltz-2 REPA-style pair-representation alignment loss.
+# Architecture identical to pairmixer_12M; auxiliary loss wired in via
+# training/model/toymix_pairmixer_12M_boltz_repa.yaml.
+
+defaults:
+  - pairmixer_12M

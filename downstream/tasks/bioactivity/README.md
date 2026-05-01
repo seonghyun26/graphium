@@ -10,8 +10,16 @@ Port of the 29-assay ChEMBL / JUMP Cell Painting benchmark from
   out of the loss (focal BCE with γ=2).
 - **Splits**: Butina-clustered 6-fold CV on ECFP4 (r=2, 1024 bits) with
   rotation — test={k}, val={(k+1)%6}, train=rest. Matches upstream.
-- **Metric**: macro-AUROC and macro-AUPRC, averaged across the assays that have
-  at least two labeled compounds and both classes in the test fold.
+- **Primary metrics**: macro-AUROC and macro-AUPRC, averaged across the assays
+  that have at least two labeled compounds and both classes in the test fold.
+- **Additional assay-coverage metrics**: each eval row now also stores:
+  - per-assay AUROC / AUPRC columns (`test_auroc__assay_*`, `test_auprc__assay_*`)
+  - fold-level AUROC threshold counts / percentages at 0.7, 0.8, 0.9
+    (`test_auroc_ge_0p70_count`, `..._pct`, etc.)
+
+The dashboard notebook uses the per-assay AUROC columns to build an extra
+summary table: for each model, the number / percentage of assays whose **mean
+assay AUROC across CV folds** exceeds 0.7 / 0.8 / 0.9.
 
 ## Encoders
 
@@ -38,6 +46,10 @@ python -m downstream.tasks.bioactivity.eval --encoder pairmixer --cv \
 # Or orchestrate via:
 bash scripts/bioactivity/run_all.sh [pairmixer_ckpt]
 ```
+
+> Existing rows in `results/downstream/bioactivity.csv` do **not** contain the
+> new per-assay columns. Re-run the benchmark after pulling this change to
+> populate the additional tables.
 
 ## Head
 

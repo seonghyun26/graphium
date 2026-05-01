@@ -24,6 +24,7 @@ import numpy as np
 
 from downstream.model import available_encoders, load_encoder
 from downstream.tasks.common import append_result_row
+from .report import EF_TOP_FRACTIONS, assay_threshold_summary, ef_macro_column, flatten_per_assay_metrics
 from .config import (
     DEFAULT_DATA_DIR,
     DEFAULT_MOL_CACHE_DIR,
@@ -31,7 +32,7 @@ from .config import (
     N_FOLDS,
 )
 from .data import load_dataset, split_indices
-from .head import train_and_eval_fold
+from .head import train_and_eval_fold, train_and_eval_fold_ensemble
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -106,17 +107,39 @@ def _run_sweep(args) -> None:
         tag = f"fold{k}" if args.cv else "single"
         # Reseed per-fold so fold N isn't biased by fold N-1 state.
         t0 = time.time()
-        metrics = train_and_eval_fold(
-            X, Y, splits, arrays.assay_cols,
-            standardize=standardize,
-            hidden=args.hidden_dim, num_hidden=args.num_hidden, dropout=args.dropout,
-            epochs=args.epochs, batch_size=args.batch_size,
-            optimizer=args.optimizer, lr=args.lr, weight_decay=args.weight_decay,
-            lr_patience=args.lr_patience, min_lr=args.min_lr,
-            seed=args.seed + k, device=args.device, tag=tag,
-            log_every=args.log_every,
-        )
+        if args.ensemble_size > 1:
+            metrics = train_and_eval_fold_ensemble(
+                X, Y, splits, arrays.assay_cols,
+                standardize=standardize,
+                hidden=args.hidden_dim, num_hidden=args.num_hidden, dropout=args.dropout,
+                epochs=args.epochs, batch_size=args.batch_size,
+                optimizer=args.optimizer, lr=args.lr, weight_decay=args.weight_decay,
+                lr_patience=args.lr_patience, min_lr=args.min_lr,
+                seed=args.seed + k, device=args.device, tag=tag,
+                log_every=args.log_every,
+                ensemble_size=args.ensemble_size,
+            )
+        else:
+            metrics = train_and_eval_fold(
+                X, Y, splits, arrays.assay_cols,
+                standardize=standardize,
+                hidden=args.hidden_dim, num_hidden=args.num_hidden, dropout=args.dropout,
+                epochs=args.epochs, batch_size=args.batch_size,
+                optimizer=args.optimizer, lr=args.lr, weight_decay=args.weight_decay,
+                lr_patience=args.lr_patience, min_lr=args.min_lr,
+                seed=args.seed + k, device=args.device, tag=tag,
+                log_every=args.log_every,
+            )
         per_fold.append(metrics)
+        per_assay_metrics = flatten_per_assay_metrics(
+            per_assay_auroc=metrics["per_assay_auroc"],
+            per_assay_auprc=metrics["per_assay_auprc"],
+            per_assay_ef=metrics["per_assay_ef"],
+        )
+        threshold_metrics = assay_threshold_summary(
+            metrics["per_assay_auroc"],
+            denominator=len(arrays.assay_cols),
+        )
 
         row = {
             "task":         "bioactivity",
@@ -129,13 +152,22 @@ def _run_sweep(args) -> None:
             "n_val":        int(len(splits["val"])),
             "n_test":       int(len(splits["test"])),
             "feature_dim":  int(X.shape[1]),
+            "n_assays_total":   int(len(arrays.assay_cols)),
             "test_auroc_macro": metrics["auroc_macro"],
             "test_auprc_macro": metrics["auprc_macro"],
             "n_assays_scored":  metrics["n_assays_scored"],
+            **{ef_macro_column(top_fraction): metrics[ef_macro_column(top_fraction)] for top_fraction in EF_TOP_FRACTIONS},
             "best_val_auroc":   metrics.get("best_val_auroc"),
             "elapsed_sec":  round(time.time() - t0, 1),
             "optimizer":    args.optimizer,
             "lr":           args.lr,
+            "ensemble_size": int(metrics.get("ensemble_size", 1)),
+            "member_auroc_mean": metrics.get("member_auroc_mean"),
+            "member_auroc_std":  metrics.get("member_auroc_std"),
+            "member_auprc_mean": metrics.get("member_auprc_mean"),
+            "member_auprc_std":  metrics.get("member_auprc_std"),
+            **threshold_metrics,
+            **per_assay_metrics,
             **extra_meta,
         }
         append_result_row(results_csv, row)
@@ -196,6 +228,10 @@ def main() -> None:
     p.add_argument("--min-lr", type=float, default=1e-5)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--log-every", type=int, default=10)
+    p.add_argument("--ensemble-size", type=int, default=1,
+                   help="Inner ensemble: train N MLP heads per fold with different seeds, "
+                        "average sigmoid probabilities across members, recompute metrics. "
+                        "Default 1 (single fit, original behavior).")
 
     # paths
     p.add_argument("--data-dir", default=str(ROOT / DEFAULT_DATA_DIR))

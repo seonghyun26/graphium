@@ -161,6 +161,7 @@ class MultitaskDataset(Dataset):
         data_path: Optional[Union[str, os.PathLike]] = None,
         dataloading_from: str = "ram",
         data_is_cached: bool = False,
+        boltz_pair_cache: Optional[Any] = None,
     ):
         r"""
         This class holds the information for the multitask dataset.
@@ -195,6 +196,12 @@ class MultitaskDataset(Dataset):
         self.save_smiles_and_ids = save_smiles_and_ids
         self.data_path = data_path
         self.dataloading_from = dataloading_from
+        self.boltz_pair_cache = boltz_pair_cache
+        if self.boltz_pair_cache is not None and not save_smiles_and_ids:
+            raise ValueError(
+                "boltz_pair_cache requires save_smiles_and_ids=True so that "
+                "per-molecule SMILES can be used to look up Boltz targets at __getitem__ time."
+            )
 
         logger.info(f"Dataloading from {dataloading_from.upper()}")
 
@@ -459,7 +466,46 @@ class MultitaskDataset(Dataset):
             if self.features is not None:
                 datum["features"] = self.features[idx]
 
+        if self.boltz_pair_cache is not None:
+            self._attach_boltz_pair_target(datum)
+
         return datum
+
+    def _attach_boltz_pair_target(self, datum: Dict[str, Any]) -> None:
+        """Look up Boltz pair tensor by SMILES and attach to ``datum['features']``.
+
+        Adds two fields to the per-graph features:
+          - ``nodepair_boltz_z``: ``(N, N, 128)`` fp32 — pair tensor in graphium
+            canonical atom order (zero-padded if missing). The ``nodepair_``
+            prefix triggers ``pad_nodepairs`` auto-padding in ``collage_pyg_graph``.
+          - ``boltz_present``: ``(1,)`` bool — True iff the molecule was found in
+            the cache. Stacked to ``(B,)`` after batching.
+        """
+        feat = datum.get("features")
+        smiles = datum.get("smiles")
+        if feat is None or smiles is None:
+            return
+
+        if isinstance(feat, Data):
+            n = int(feat.num_nodes)
+        elif isinstance(feat, GraphDict):
+            n = feat["adj"].shape[0]
+        else:
+            return
+
+        z = self.boltz_pair_cache.get_by_raw_smiles(smiles)
+        present = z is not None and z.shape[0] == n
+        if not present:
+            z = torch.zeros((n, n, 128), dtype=torch.float32)
+
+        present_tensor = torch.tensor([present], dtype=torch.bool)
+
+        if isinstance(feat, Data):
+            feat.nodepair_boltz_z = z
+            feat.boltz_present = present_tensor
+        else:
+            feat["nodepair_boltz_z"] = z
+            feat["boltz_present"] = present_tensor
 
     def load_graph_from_index(self, data_idx):
         r"""

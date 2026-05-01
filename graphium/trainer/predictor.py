@@ -72,6 +72,7 @@ class PredictorModule(lightning.LightningModule):
         gradient_acc: int = 1,
         global_bs: Optional[int] = 1,
         adaptive_modality_dropout: Optional[Dict[str, Any]] = None,
+        boltz_repa_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """
         The Lightning module responsible for handling the predictions, losses, metrics, optimization, etc.
@@ -163,6 +164,37 @@ class PredictorModule(lightning.LightningModule):
         self._flag_options = FlagOptions(flag_kwargs=flag_kwargs)
 
         self.model = self._model_options.model_class(**self._model_options.model_kwargs)
+
+        # Boltz REPA alignment loss (optional). When configured, enables pair-feature
+        # capture on the final GNN layer so the alignment loss can read it from the
+        # batch after forward.
+        self.boltz_repa_loss = None
+        if boltz_repa_kwargs is not None:
+            from graphium.nn.losses.boltz_repa import BoltzRepaLoss
+
+            self.boltz_repa_loss = BoltzRepaLoss(**boltz_repa_kwargs)
+            # The model uses muP which requires every parameter to have an
+            # `infshape`. The projector lives outside `self.model` so it isn't
+            # covered by the main `set_base_shapes` call — mark its params as
+            # non-scaling by setting base shapes equal to current shapes.
+            try:
+                from mup import set_base_shapes
+
+                set_base_shapes(self.boltz_repa_loss, self.boltz_repa_loss, rescale_params=False)
+            except ImportError:
+                pass
+
+            gnn = getattr(self.model, "gnn", None)
+            if gnn is not None and hasattr(gnn, "_pair_capture_layers"):
+                depth = len(gnn.layers)
+                capture = set(gnn._pair_capture_layers or set())
+                capture.add(depth - 1)
+                gnn._pair_capture_layers = capture
+                self._boltz_repa_capture_layer = depth - 1
+            else:
+                self._boltz_repa_capture_layer = None
+        else:
+            self._boltz_repa_capture_layer = None
 
         loss_fun = {
             self._get_task_key(task_level=task_levels[key], task=key): value
@@ -435,6 +467,46 @@ class PredictorModule(lightning.LightningModule):
                 aux = torch.nan_to_num(aux, nan=0.0)
                 feats_batch[f"aux_{orig_task}"] = aux
 
+    def _compute_boltz_repa_loss(self, batch: Dict[str, Any]) -> Optional[torch.Tensor]:
+        """Read PairMixer's final-layer pair_feat (captured during forward) and
+        align it against the cached Boltz pair tensor via REPA-style cosine loss.
+
+        Returns ``None`` if any required field is missing — the model isn't a
+        PairMixer, or the cache wasn't wired through, or this batch has no
+        Boltz targets.
+        """
+        feats = batch.get("features")
+        if feats is None or self._boltz_repa_capture_layer is None:
+            return None
+        if not hasattr(feats, "nodepair_boltz_z") or not hasattr(feats, "boltz_present"):
+            return None
+        stack = getattr(feats, "pair_feat_stack", None)
+        if stack is None or self._boltz_repa_capture_layer not in stack:
+            return None
+
+        pair_feat_g = stack[self._boltz_repa_capture_layer]  # (B, N_max, N_max, D_g)
+
+        from torch_geometric.utils import to_dense_batch
+        boltz_dense, node_mask = to_dense_batch(
+            feats.nodepair_boltz_z, feats.batch
+        )  # (B, N_max, N_max_pad, 128), (B, N_max)
+
+        # Truncate to matching N_max if collate's pad ran wider than the dense view
+        n_max = pair_feat_g.shape[1]
+        if boltz_dense.shape[1] != n_max or boltz_dense.shape[2] != n_max:
+            boltz_dense = boltz_dense[:, :n_max, :n_max, :]
+            node_mask = node_mask[:, :n_max]
+
+        pair_mask = node_mask.unsqueeze(2) & node_mask.unsqueeze(1)  # (B, N_max, N_max)
+        present = feats.boltz_present  # (B,)
+
+        return self.boltz_repa_loss(
+            pair_feat_g.to(boltz_dense.dtype),
+            boltz_dense,
+            pair_mask,
+            present,
+        )
+
     def _general_step(self, batch: Dict[str, Tensor], step_name: str, to_cpu: bool) -> Dict[str, Any]:
         r"""Common code for training_step, validation_step and testing_step"""
         self._split_aux_from_labels(batch)
@@ -485,6 +557,12 @@ class PredictorModule(lightning.LightningModule):
         for module in self.model.modules():
             if hasattr(module, "aux_loss") and isinstance(module.aux_loss, torch.Tensor) and module.aux_loss.item() > 0:
                 loss = loss + module.aux_loss.to(loss.device)
+
+        # Boltz REPA alignment loss (training only).
+        if step_name == "train" and self.boltz_repa_loss is not None:
+            repa_loss = self._compute_boltz_repa_loss(batch)
+            if repa_loss is not None:
+                loss = loss + repa_loss.to(loss.device)
 
         device = "cpu" if to_cpu else None
         for task in preds:

@@ -262,9 +262,9 @@ case "${DATASET}" in
         ARCHITECTURE=toymix
         [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
         ;;
-    toymix_esmc_lpm24_bbbc047)
-        TASKS=toymix_esmc_lpm24_bbbc047
-        TRAINING=toymix_esmc_lpm24_bbbc047
+    toymix_dti_esmc_v2_lpm24_litopenai_bbbc047)
+        TASKS=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047
+        TRAINING=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047
         ARCHITECTURE=toymix
         [[ "${MODEL}" == "gcn" || "${MODEL}" == "mpnn" ]] && BATCH_SIZE=${BATCH_SIZE:-1024}
         ;;
@@ -322,7 +322,7 @@ esac
 # ── Optional: sample_size for dataset size ablation ──────────────────────────
 SAMPLE_FLAGS=""
 if [[ -n "${SAMPLE_SIZE:-}" ]]; then
-    if [[ "${DATASET}" == "toymix" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "toymix_lpm24" || "${DATASET}" == "toymix_lpm24_galactica" || "${DATASET}" == "toymix_lpm24_litopenai" || "${DATASET}" == "toymix_esmc_lpm24_bbbc047" ]]; then
+    if [[ "${DATASET}" == "toymix" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "toymix_lpm24" || "${DATASET}" == "toymix_lpm24_galactica" || "${DATASET}" == "toymix_lpm24_litopenai" || "${DATASET}" == "toymix_dti_esmc_v2_lpm24_litopenai_bbbc047" ]]; then
         for t in qm9 tox21 zinc; do
             SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.${t}.sample_size=${SAMPLE_SIZE}"
         done
@@ -334,16 +334,16 @@ if [[ -n "${SAMPLE_SIZE:-}" ]]; then
     if [[ "${DATASET}" == "rxrx3" || "${DATASET}" == "largemix_rxrx3" || "${DATASET}" == "toymix_rxrx3" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.rxrx3.sample_size=${SAMPLE_SIZE}"
     fi
-    if [[ "${DATASET}" == "dti" || "${DATASET}" == "dti_filtered" || "${DATASET}" == "dti_10k_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" || "${DATASET}" == "dti_v2" || "${DATASET}" == "dti_esmc_v2" || "${DATASET}" == "toymix_dti_v2" || "${DATASET}" == "toymix_dti_esmc_v2" || "${DATASET}" == "toymix_esmc_lpm24_bbbc047" ]]; then
+    if [[ "${DATASET}" == "dti" || "${DATASET}" == "dti_filtered" || "${DATASET}" == "dti_10k_filtered" || "${DATASET}" == "toymix_dti_10k_filtered" || "${DATASET}" == "toymix_dti_filtered" || "${DATASET}" == "largemix_dti" || "${DATASET}" == "largemix_dti_filtered" || "${DATASET}" == "toymix_dti" || "${DATASET}" == "toymix_rxrx3_dti" || "${DATASET}" == "rxrx3_dti" || "${DATASET}" == "largemix_rxrx3_dti" || "${DATASET}" == "dti_v2" || "${DATASET}" == "dti_esmc_v2" || "${DATASET}" == "toymix_dti_v2" || "${DATASET}" == "toymix_dti_esmc_v2" || "${DATASET}" == "toymix_dti_esmc_v2_lpm24_litopenai_bbbc047" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.dti.sample_size=${SAMPLE_SIZE}"
     fi
     if [[ "${DATASET}" == "dti_pactivity" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.dti_pactivity.sample_size=${SAMPLE_SIZE}"
     fi
-    if [[ "${DATASET}" == "lpm24" || "${DATASET}" == "toymix_lpm24" || "${DATASET}" == "toymix_lpm24_galactica" || "${DATASET}" == "toymix_lpm24_litopenai" || "${DATASET}" == "toymix_esmc_lpm24_bbbc047" ]]; then
+    if [[ "${DATASET}" == "lpm24" || "${DATASET}" == "toymix_lpm24" || "${DATASET}" == "toymix_lpm24_galactica" || "${DATASET}" == "toymix_lpm24_litopenai" || "${DATASET}" == "toymix_dti_esmc_v2_lpm24_litopenai_bbbc047" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.lpm24.sample_size=${SAMPLE_SIZE}"
     fi
-    if [[ "${DATASET}" == "bbbc047" || "${DATASET}" == "toymix_bbbc047" || "${DATASET}" == "toymix_bbbc047_filtered" || "${DATASET}" == "toymix_esmc_lpm24_bbbc047" ]]; then
+    if [[ "${DATASET}" == "bbbc047" || "${DATASET}" == "toymix_bbbc047" || "${DATASET}" == "toymix_bbbc047_filtered" || "${DATASET}" == "toymix_dti_esmc_v2_lpm24_litopenai_bbbc047" ]]; then
         SAMPLE_FLAGS="${SAMPLE_FLAGS} ++datamodule.args.task_specific_args.bbbc047.sample_size=${SAMPLE_SIZE}"
     fi
 fi

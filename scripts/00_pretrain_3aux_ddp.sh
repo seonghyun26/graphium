@@ -122,6 +122,26 @@ CUDA_VISIBLE_DEVICES=${GPU_A},${GPU_B} graphium-train \\
 EOF
 }
 
+# ---- Build the cache-warmup command for one dataset --------------------------
+# Single-process pre-pass that runs prepare_data() and exits, so the DDP
+# ranks below hit a populated featurization cache and rendezvous within the
+# TCPStore timeout. Skip with WARMUP_SKIP=1.
+build_warmup_cmd() {
+    local dataset=$1
+    groups_for "${dataset}"
+    cat <<EOF
+CUDA_VISIBLE_DEVICES=${GPU_A} graphium-train \\
+    model=${MODEL} \\
+    accelerator=gpu \\
+    tasks=${TASKS} \\
+    training=${TRAINING} \\
+    architecture=${ARCH} \\
+    +trainer.trainer.devices=1 \\
+    +prepare_data_only=true \\
+    ${EXTRA_FLAGS:-}
+EOF
+}
+
 # ---- Plan preview ------------------------------------------------------------
 echo "== 3-aux DDP pretrain plan =="
 echo "  model:    ${MODEL}"
@@ -149,9 +169,24 @@ for i in "${!DATASETS[@]}"; do
     echo "============================================================"
     echo "  [$((i+1))/${#DATASETS[@]}] ${ds} -> ${log}"
     echo "============================================================"
+    # Cache warmup before DDP — single-process pass that exits after
+    # prepare_data(). Set WARMUP_SKIP=1 to skip when the cache is hot.
+    if [[ "${WARMUP_SKIP:-0}" != "1" ]]; then
+        echo ">> [warmup] ${ds} on GPU ${GPU_A} ..."
+        warmup_cmd=$(build_warmup_cmd "${ds}")
+        (eval "${warmup_cmd}") 2>&1 | tee -a "${log}"
+        wrc=${PIPESTATUS[0]}
+        if [[ ${wrc} -ne 0 ]]; then
+            echo "!! warmup failed for ${ds} (exit ${wrc}); skipping DDP run." >&2
+            STATUS[i]="WARMUP_FAIL(${wrc})"
+            RC_GLOBAL=${wrc}
+            continue
+        fi
+        echo ">> [warmup] done."
+    fi
     # Eval the command so the heredoc's line continuations collapse properly.
     cmd=$(build_cmd "${ds}")
-    (eval "${cmd}") 2>&1 | tee "${log}"
+    (eval "${cmd}") 2>&1 | tee -a "${log}"
     rc=${PIPESTATUS[0]}
     if [[ ${rc} -eq 0 ]]; then
         STATUS[i]="OK"

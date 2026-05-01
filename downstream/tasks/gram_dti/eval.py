@@ -71,6 +71,33 @@ from downstream.tasks.common import (
     train_head,
 )
 from downstream.tasks.common.heads import HEAD_CHOICES, predict_proba_positive
+
+
+def _ensemble_predict_proba(
+    X_tr: np.ndarray, y_tr: np.ndarray, X_eval: list[np.ndarray],
+    *, head_type: str, base_random_state: int, ensemble_size: int,
+    autogluon_time_limit: int, autogluon_preset: str,
+) -> list[np.ndarray]:
+    """Train ``ensemble_size`` heads with seeds ``base_random_state + 1000*m``
+    and return, for each ``X_eval`` array, the per-member-averaged positive-
+    class probabilities. Mirrors the head-only ensemble used in the MiniMol
+    probe (different RNG seed per member, same train/val/test split)."""
+    member_probas: list[list[np.ndarray]] = [[] for _ in X_eval]
+    for m in range(ensemble_size):
+        seed_m = base_random_state + 1000 * m
+        clf = train_head(
+            X_tr, y_tr,
+            task="classification", head_type=head_type,
+            random_state=seed_m,
+            autogluon_time_limit=autogluon_time_limit,
+            autogluon_preset=autogluon_preset,
+        )
+        for i, Xe in enumerate(X_eval):
+            member_probas[i].append(
+                predict_proba_positive(clf, Xe) if len(Xe) else np.zeros(0)
+            )
+    return [np.mean(np.stack(ps, axis=0), axis=0) if ps and len(ps[0])
+            else np.zeros(0) for ps in member_probas]
 from .config import (
     DEFAULT_DATA_DIR,
     DEFAULT_MOL_CACHE_DIR,
@@ -150,15 +177,26 @@ def _run_sweep(args) -> None:
                     continue
 
                 t0 = time.time()
-                clf = train_head(
-                    X_all[tr_idx], y_all[tr_idx],
-                    task="classification", head_type=args.head,
-                    random_state=args.random_state,
-                    autogluon_time_limit=args.autogluon_time_limit,
-                    autogluon_preset=args.autogluon_preset,
-                )
-                proba_val  = predict_proba_positive(clf, X_all[va_idx]) if len(va_idx) else np.zeros(0)
-                proba_test = predict_proba_positive(clf, X_all[te_idx])
+                if args.ensemble_size > 1:
+                    proba_val, proba_test = _ensemble_predict_proba(
+                        X_all[tr_idx], y_all[tr_idx],
+                        [X_all[va_idx], X_all[te_idx]],
+                        head_type=args.head,
+                        base_random_state=args.random_state,
+                        ensemble_size=args.ensemble_size,
+                        autogluon_time_limit=args.autogluon_time_limit,
+                        autogluon_preset=args.autogluon_preset,
+                    )
+                else:
+                    clf = train_head(
+                        X_all[tr_idx], y_all[tr_idx],
+                        task="classification", head_type=args.head,
+                        random_state=args.random_state,
+                        autogluon_time_limit=args.autogluon_time_limit,
+                        autogluon_preset=args.autogluon_preset,
+                    )
+                    proba_val  = predict_proba_positive(clf, X_all[va_idx]) if len(va_idx) else np.zeros(0)
+                    proba_test = predict_proba_positive(clf, X_all[te_idx])
 
                 val_m = (classification_metrics(y_all[va_idx], proba_val)
                          if len(va_idx) else {k: float("nan") for k in
@@ -180,6 +218,7 @@ def _run_sweep(args) -> None:
                     "feature_dim_mol":  int(encoder.out_dim),
                     "feature_dim_prot": int(arrays.prot_emb.shape[1]),
                     "elapsed_sec": round(time.time() - t0, 1),
+                    "ensemble_size": int(args.ensemble_size),
                     **{f"val_{k}":  v for k, v in val_m.items()},
                     **{f"test_{k}": v for k, v in test_m.items()},
                     **extra_meta,
@@ -206,6 +245,10 @@ def main() -> None:
     p.add_argument("--folds", nargs="+", type=int, default=None,
                    help="Subset of fold indices (default: all — 10 DTI / 5 MoA)")
     p.add_argument("--random-state", type=int, default=0)
+    p.add_argument("--ensemble-size", type=int, default=1,
+                   help="Inner ensemble: train N heads per (subset, method, fold) "
+                        "with random_state = base + 1000*m, average positive-class "
+                        "probabilities across members, recompute metrics. Default 1.")
 
     # pairmixer-only
     p.add_argument("--ckpt", default=None, help="(pairmixer) checkpoint .ckpt path")

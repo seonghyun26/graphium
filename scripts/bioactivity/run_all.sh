@@ -14,7 +14,7 @@
 #   EXTRA_FLAGS="--epochs 50 --seed 7"    # passed to every encoder
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 eval "$(conda shell.bash hook)"
 conda activate graphium-downstream 2>/dev/null || conda activate graphium

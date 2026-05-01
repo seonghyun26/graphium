@@ -210,3 +210,7 @@ autoresearch/
 *.omc
 *scheduled_tasks.lock
 .omx/
+*.h5*
+*.tsv*
+*results*
+*scripts/boltz*

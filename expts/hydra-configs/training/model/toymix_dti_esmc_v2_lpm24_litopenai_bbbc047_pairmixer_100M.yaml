@@ -11,12 +11,12 @@
 #     (2*16=32) sits between toymix_bbbc047_pairmixer_100M (24) and
 #     toymix_pairmixer_100M runs.
 constants:
-  name: toymix_esmc_lpm24_bbbc047_pairmixer_100M
+  name: toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_100M
   seed: 42
   max_epochs: 100
   data_dir: ./data/graphium/neurips2023/small-dataset
   raise_train_error: true
-  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_esmc_lpm24_bbbc047/
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047/
 
 datamodule:
   args:
@@ -28,7 +28,7 @@ datamodule:
 
 trainer:
   model_checkpoint:
-    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_esmc_lpm24_bbbc047/pairmixer_100M/${now:%Y-%m-%d_%H-%M-%S}/
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047/pairmixer_100M/${now:%Y-%m-%d_%H-%M-%S}/
     filename: "${constants.name}_epoch{epoch:03d}"
     every_n_epochs: 20
     save_top_k: -1

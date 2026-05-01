@@ -1,0 +1,7 @@
+# @package _global_
+# PairMixer 3M with Boltz-2 REPA-style pair-representation alignment loss.
+# Architecture identical to pairmixer_3M; auxiliary loss wired in via
+# training/model/toymix_pairmixer_3M_boltz_repa.yaml.
+
+defaults:
+  - pairmixer_3M

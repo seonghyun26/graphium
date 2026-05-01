@@ -10,7 +10,7 @@ datamodule:
   args:
     task_specific_args:
       dti:
-        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/dti_esmc_100k_v2_max100.csv
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/dti_esmc_100k_v2_max100_admetfilt.csv
         smiles_col: "SMILES_nometa"
         label_cols: feature_*
         split_val: 0.1
@@ -30,7 +30,7 @@ datamodule:
         task_level: graph
         # Pre-normalized (Z-score) in the pipeline; no additional normalization.
       bbbc047:
-        df_path: /home/shpark/prj-molrepr/data/bbbc047/bbbc047_smiles_embeddings_max100.csv
+        df_path: /home/shpark/prj-molrepr/data/bbbc047/bbbc047_smiles_embeddings_max100_admetfilt.csv
         smiles_col: "SMILES"
         label_cols: feature_*
         split_val: 0.1

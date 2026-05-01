@@ -6,7 +6,7 @@ datamodule:
     task_specific_args:
       bbbc047:
         # Size-filtered to ≤100 heavy atoms (caps pair-tensor O(N²) cost; loses <0.02% of rows)
-        df_path: /home/shpark/prj-molrepr/data/bbbc047/bbbc047_smiles_embeddings_max100.csv
+        df_path: /home/shpark/prj-molrepr/data/bbbc047/bbbc047_smiles_embeddings_max100_admetfilt.csv
         smiles_col: "SMILES"
         label_cols: feature_*
         split_val: 0.1

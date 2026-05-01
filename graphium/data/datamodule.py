@@ -810,6 +810,7 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
         featurization_batch_size: int = 1000,
         collate_fn: Optional[Callable] = None,
         prepare_dict_or_graph: str = "pyg:graph",
+        boltz_pair_h5_paths: Optional[Union[str, List[str]]] = None,
         **kwargs,
     ):
         """
@@ -890,6 +891,9 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
         self.featurization_backend = featurization_backend
         self.featurization_batch_size = featurization_batch_size
 
+        self.boltz_pair_h5_paths = boltz_pair_h5_paths
+        self._boltz_pair_cache = None
+
         self.task_train_indices = None
         self.task_val_indices = None
         self.task_test_indices = None
@@ -927,6 +931,20 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
             if self._ready_to_load_all_from_file():
                 self._data_is_prepared = True
                 self._data_is_cached = True
+
+    @property
+    def boltz_pair_cache(self):
+        """Lazy-init `BoltzPairCache` from `boltz_pair_h5_paths`. None if not configured."""
+        if self.boltz_pair_h5_paths is None:
+            return None
+        if self._boltz_pair_cache is None:
+            from graphium.data.boltz_pair_loader import BoltzPairCache
+
+            paths = self.boltz_pair_h5_paths
+            if isinstance(paths, str):
+                paths = [paths]
+            self._boltz_pair_cache = BoltzPairCache(paths)
+        return self._boltz_pair_cache
 
     def _parse_caching_args(self, processed_graph_data_path, dataloading_from):
         """
@@ -1260,6 +1278,10 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
 
         processed_graph_data_path = self.processed_graph_data_path
 
+        boltz_pair_cache = self.boltz_pair_cache
+        if boltz_pair_cache is not None:
+            save_smiles_and_ids = True
+
         multitask_dataset = Datasets.MultitaskDataset(
             singletask_datasets,
             n_jobs=self.featurization_n_jobs,
@@ -1271,6 +1293,7 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
             data_path=self._path_to_load_from_file(stage) if processed_graph_data_path else None,
             dataloading_from=dataloading_from,
             data_is_cached=self._data_is_cached,
+            boltz_pair_cache=boltz_pair_cache,
         )  # type: ignore
 
         # calculate statistics for the train split and used for all splits normalization
