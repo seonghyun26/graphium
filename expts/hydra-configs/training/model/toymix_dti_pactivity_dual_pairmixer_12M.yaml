@@ -1,0 +1,39 @@
+# @package _global_
+
+# PairMixer 12M with ToyMix + DTI pActivity dual-head pre-training:
+#   regression (pY -> MAE) and binary (pY_bin -> BCE+LS) heads share the GNN
+#   trunk and the 1152-d ESMC protein embedding via aux_in_dim. Dual heads add
+#   a small extra label tensor per sample (1 vs 2 scalar labels), so the batch
+#   sizing matches the single-head 12M sibling.
+constants:
+  name: toymix_dti_pactivity_dual_pairmixer_12M
+  seed: 42
+  max_epochs: 100
+  data_dir: /home/shpark/prj-molrepr/graphium/data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix-dti-pactivity-dual/
+
+datamodule:
+  args:
+    batch_size_training: 4       # halved vs single-head 12M; dual DTI sub-batches doubled triangle-op memory
+    batch_size_inference: 4
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/toymix-dti-pactivity-dual/pairmixer_12M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 10
+    save_top_k: -1
+  trainer:
+    precision: bf16-mixed
+    accumulate_grad_batches: 16  # effective batch = 64 (compensates halved bs)
+    gradient_clip_val: 1.0       # cap global grad-norm; bf16 + triangle ops can spike on heavy regression heads
+    gradient_clip_algorithm: norm
+
+predictor:
+  optim_kwargs:
+    weight_decay: 0.01           # decoupled WD via AdamW; pretrain regularization for the heavy multi-task heads
+    optim_impl: AdamW

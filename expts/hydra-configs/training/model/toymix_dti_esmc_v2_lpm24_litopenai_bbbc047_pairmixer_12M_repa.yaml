@@ -1,0 +1,87 @@
+# @package _global_
+# REPA-style variant of the 3-aux PairMixer 12M pretrain.
+#
+# Replaces MAE with REPA's negative-cosine-similarity loss for the three dense
+# embedding heads (DTI ESM-C, LPM-24 OpenAI, BBBC047 Cell-Painting). The
+# existing task_head MLP (D_trunk -> hidden -> D_out) acts as REPA's projector.
+#
+# REPA defaults baked into this config (Yu et al. 2024, "Representation
+# Alignment for Generation"):
+#   * lambda = 0.5  (per-task `weight:` below; paper section 4)
+#   * projector hidden dim = trunk dim
+#       trunk dim feeding the heads = graph_output_nn.graph.out_dim = 512
+#       (PairMixer 12M, see model/pairmixer_12M.yaml).
+#       So we override task_heads.{dti,lpm24,bbbc047}.hidden_dims: 512
+#       (was 128 in the MAE baseline tasks YAML).
+#   * projector depth = 2-3 (small MLP). Keeping depth=2 to match baseline
+#     parameter budget; bump to 3 if the loss curve plateaus early.
+#
+# Why this differs from the MAE baseline:
+#   1. Direction-aware: z-scored embeddings live on a manifold; magnitude noise
+#      no longer dominates the gradient.
+#   2. Dimensionless: `1 - cos` is bounded in [0, 2] regardless of out_dim, so
+#      LPM-24 (1536-d) and DTI (1152-d) heads no longer outweigh the small
+#      ToyMix tasks (out_dim 19/12/3) just by having more output channels.
+#   3. lambda = 0.5 lowers the aux contribution against the supervised ToyMix
+#      loss; tweak in [0.2, 1.0] if the trunk is over- or under-driven.
+#
+# Compose with the existing tasks/training groups:
+#   tasks=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047
+#   training=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047
+#   architecture=toymix
+#   model=pairmixer_12M
+#   training/model=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_repa
+
+defaults:
+  - toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M
+
+constants:
+  name: toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_repa
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047/pairmixer_12M_repa/${now:%Y-%m-%d_%H-%M-%S}/
+
+predictor:
+  loss_fun:
+    # REPA cosine alignment for the dense embedding heads.
+    # `d_target` must match `architecture.task_heads.<name>.out_dim`.
+    # `weight` is REPA's lambda (default 0.5 per Yu et al. 2024).
+    dti:     {name: cos_align_ipu, d_target: 1152, weight: 0.5}
+    lpm24:   {name: cos_align_ipu, d_target: 1536, weight: 0.5}
+    bbbc047: {name: cos_align_ipu, d_target: 672,  weight: 0.5}
+    # Supervised ToyMix tasks are unchanged.
+    qm9:   mae_ipu
+    tox21: bce_logits_ipu
+    zinc:  mae_ipu
+
+# Bump projector hidden dim to the trunk dim (512 = graph_output_nn.graph.out_dim).
+# REPA paper: projector hidden ≈ trunk hidden so the projector can absorb the
+# modality-specific transformation without bottlenecking the trunk.
+# in_dim is auto-wired from graph_output_nn.graph.out_dim; we only override hidden_dims.
+architecture:
+  task_heads:
+    dti:
+      hidden_dims: 512
+    lpm24:
+      hidden_dims: 512
+    bbbc047:
+      hidden_dims: 512
+
+# Track cosine alignment quality alongside the existing pearsonr/mae metrics
+# (which are computed in the original-target space and stay informative).
+# `reduction: mean` is required because torchmetrics.cosine_similarity defaults
+# to reduction='sum' (would log B*mean per batch instead of mean).
+metrics:
+  dti:
+    - {name: mae,        metric: mae_ipu}
+    - {name: pearsonr,   metric: pearsonr_ipu}
+    - {name: cosine,     metric: cosine, reduction: mean}
+  lpm24:
+    - {name: mae,        metric: mae_ipu}
+    - {name: pearsonr,   metric: pearsonr_ipu}
+    - {name: cosine,     metric: cosine, reduction: mean}
+  bbbc047:
+    - {name: mae,        metric: mae_ipu}
+    - {name: pearsonr,   metric: pearsonr_ipu}
+    - {name: cosine,     metric: cosine, reduction: mean}

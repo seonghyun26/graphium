@@ -73,6 +73,7 @@ class PredictorModule(lightning.LightningModule):
         global_bs: Optional[int] = 1,
         adaptive_modality_dropout: Optional[Dict[str, Any]] = None,
         boltz_repa_kwargs: Optional[Dict[str, Any]] = None,
+        repa_intermediate_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """
         The Lightning module responsible for handling the predictions, losses, metrics, optimization, etc.
@@ -195,6 +196,55 @@ class PredictorModule(lightning.LightningModule):
                 self._boltz_repa_capture_layer = None
         else:
             self._boltz_repa_capture_layer = None
+
+        # ── Mid-layer REPA alignment for multi-modal pretraining ────────────
+        # Aligns a configurable mid-layer pair representation against per-task
+        # precomputed embeddings via cosine. Same capture-layer mechanism as
+        # boltz_repa, just at a configurable mid-layer depth and with multiple
+        # per-task projectors. See nn/losses/repa_intermediate.py.
+        self.repa_intermediate_loss = None
+        self._repa_intermediate_capture_layer = None
+        if repa_intermediate_kwargs is not None:
+            from graphium.nn.losses.repa_intermediate import RepaIntermediateAlignment
+
+            cfg_ri = dict(repa_intermediate_kwargs)
+            capture_layer = int(cfg_ri.pop("capture_layer"))
+            d_pair = int(cfg_ri.pop("d_pair"))
+            tasks_cfg = cfg_ri.pop("tasks")
+            self.repa_intermediate_loss = RepaIntermediateAlignment(
+                d_pair=d_pair,
+                tasks=tasks_cfg,
+            )
+            try:
+                from mup import set_base_shapes
+
+                set_base_shapes(
+                    self.repa_intermediate_loss,
+                    self.repa_intermediate_loss,
+                    rescale_params=False,
+                )
+            except ImportError:
+                pass
+
+            gnn = getattr(self.model, "gnn", None)
+            if gnn is not None and hasattr(gnn, "_pair_capture_layers"):
+                depth = len(gnn.layers)
+                if capture_layer < 0:
+                    capture_layer = depth + capture_layer
+                if not (0 <= capture_layer < depth):
+                    raise ValueError(
+                        f"repa_intermediate_kwargs.capture_layer={capture_layer} "
+                        f"out of range for GNN depth {depth}"
+                    )
+                capture = set(gnn._pair_capture_layers or set())
+                capture.add(capture_layer)
+                gnn._pair_capture_layers = capture
+                self._repa_intermediate_capture_layer = capture_layer
+            else:
+                raise ValueError(
+                    "repa_intermediate_kwargs requires the model to expose "
+                    "gnn._pair_capture_layers (e.g. PairMixer trunk)."
+                )
 
         loss_fun = {
             self._get_task_key(task_level=task_levels[key], task=key): value
@@ -509,6 +559,28 @@ class PredictorModule(lightning.LightningModule):
             present,
         )
 
+    def _compute_repa_intermediate_loss(
+        self, batch: Dict[str, Any], targets: Dict[str, torch.Tensor]
+    ) -> Optional[torch.Tensor]:
+        """Compute REPA cosine alignment on a mid-layer pair representation
+        against precomputed per-modality target embeddings (DTI ESM-C,
+        LPM-24 OpenAI, BBBC047 Cell Painting).
+        """
+        feats = batch.get("features")
+        if feats is None or self._repa_intermediate_capture_layer is None:
+            return None
+        stack = getattr(feats, "pair_feat_stack", None)
+        if stack is None or self._repa_intermediate_capture_layer not in stack:
+            return None
+        pair_feat = stack[self._repa_intermediate_capture_layer]  # (B, N, N, D_z)
+        pair_mask = getattr(feats, "pair_mask", None)
+        if pair_mask is None:
+            from torch_geometric.utils import to_dense_batch
+
+            _, node_mask = to_dense_batch(feats.x, feats.batch)
+            pair_mask = node_mask.unsqueeze(2) & node_mask.unsqueeze(1)
+        return self.repa_intermediate_loss(pair_feat, pair_mask, targets)
+
     def _general_step(self, batch: Dict[str, Tensor], step_name: str, to_cpu: bool) -> Dict[str, Any]:
         r"""Common code for training_step, validation_step and testing_step"""
         self._split_aux_from_labels(batch)
@@ -565,6 +637,12 @@ class PredictorModule(lightning.LightningModule):
             repa_loss = self._compute_boltz_repa_loss(batch)
             if repa_loss is not None:
                 loss = loss + repa_loss.to(loss.device)
+
+        # Mid-layer REPA alignment loss (training only).
+        if step_name == "train" and self.repa_intermediate_loss is not None:
+            mid_repa_loss = self._compute_repa_intermediate_loss(batch, targets_dict)
+            if mid_repa_loss is not None:
+                loss = loss + mid_repa_loss.to(loss.device)
 
         device = "cpu" if to_cpu else None
         for task in preds:

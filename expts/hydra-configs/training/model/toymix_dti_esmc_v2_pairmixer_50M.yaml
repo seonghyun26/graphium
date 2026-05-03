@@ -23,7 +23,7 @@ trainer:
   model_checkpoint:
     dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix-dti-esmc-v2/pairmixer_50M/${now:%Y-%m-%d_%H-%M-%S}/
     filename: "${constants.name}_epoch{epoch:03d}"
-    every_n_epochs: 20           # aligns with check_val_every_n_epoch=20
+    every_n_epochs: 10           # aligns with check_val_every_n_epoch=10
     save_top_k: -1
   trainer:
     precision: bf16-mixed        # triangle ops overflow fp16

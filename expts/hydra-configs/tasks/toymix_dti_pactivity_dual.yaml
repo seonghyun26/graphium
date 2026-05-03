@@ -1,8 +1,16 @@
 # @package _global_
 #
-# ToyMix (qm9 + tox21 + zinc) + DTI pActivity (protein-label pre-training).
-# Replaces the old DTI embedding-reconstruction task with supervised pActivity prediction:
-#   MLP(GNN(molecule) || prot_emb_1152) -> pY
+# ToyMix (qm9 + tox21 + zinc) + DTI pActivity dual-head pre-training.
+#   regression head: pY  -> MAE        (rank/affinity signal)
+#   binary head:     pY_bin -> BCE+LS  (active/inactive at pIC50>=7)
+#
+# Both DTI heads branch from the same shared GNN trunk and consume the same
+# 1152-d ESMC protein embedding via aux_in_dim. Two graphium tasks read the
+# same CSV with different label_cols slices so each head receives its own scalar
+# label plus the protein aux-input.
+#
+# Requires the CSV to have a `pY_bin` column; run scripts/data/dti_esmc/07_add_pactivity_binary.py
+# once before training.
 
 datamodule:
   args:
@@ -10,7 +18,15 @@ datamodule:
       dti_pactivity:
         df_path: data/dti-processed/dti_pactivity_esmc_100k.csv
         smiles_col: "SMILES_nometa"
-        label_cols: ["pY", "prot_emb_*"]   # explicit so adding pY_bin to the CSV doesn't shift aux dim
+        label_cols: ["pY", "prot_emb_*"]
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
+      dti_pactivity_bin:
+        df_path: data/dti-processed/dti_pactivity_esmc_100k.csv
+        smiles_col: "SMILES_nometa"
+        label_cols: ["pY_bin", "prot_emb_*"]
         split_val: 0.1
         split_test: 0.1
         seed: 0
@@ -61,6 +77,19 @@ architecture:
       normalization: ${architecture.pre_nn.normalization}
       last_normalization: "none"
       residual_type: none
+    dti_pactivity_bin:
+      task_level: graph
+      out_dim: 1
+      hidden_dims: 256
+      depth: 2
+      activation: relu
+      last_activation: none
+      aux_in_dim: 1152
+      aux_label_split: 1
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
     qm9:
       task_level: graph
       out_dim: 19
@@ -98,18 +127,22 @@ architecture:
 predictor:
   aux_label_splits:
     dti_pactivity: 1
+    dti_pactivity_bin: 1
   metrics_on_progress_bar:
     dti_pactivity: ['mae']
+    dti_pactivity_bin: ['auroc']
     qm9: ["mae"]
     tox21: ["auroc"]
     zinc: ["mae"]
   metrics_on_training_set:
     dti_pactivity: ['mae']
+    dti_pactivity_bin: ['auroc']
     qm9: []
     tox21: []
     zinc: []
   loss_fun:
     dti_pactivity: mae_ipu
+    dti_pactivity_bin: bce_logits_ls
     qm9: mae_ipu
     tox21: bce_logits_ipu
     zinc: mae_ipu
@@ -120,6 +153,17 @@ metrics:
     metric: mae_ipu
   - name: pearsonr
     metric: pearsonr_ipu
+  dti_pactivity_bin:
+  - name: auroc
+    metric: auroc_ipu
+    task: binary
+    multitask_handling: mean-per-label
+    threshold_kwargs: null
+  - name: avpr
+    metric: average_precision_ipu
+    task: binary
+    multitask_handling: mean-per-label
+    threshold_kwargs: null
   qm9: &qm9_metrics
     - name: mae
       metric: mae_ipu

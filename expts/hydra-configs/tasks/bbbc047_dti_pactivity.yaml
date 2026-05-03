@@ -27,7 +27,7 @@ datamodule:
       dti_pactivity:
         df_path: data/dti-processed/dti_pactivity_esmc_100k.csv
         smiles_col: "SMILES_nometa"
-        label_cols: null  # all non-SMILES columns: pY + prot_emb_0..prot_emb_1151
+        label_cols: ["pY", "prot_emb_*"]   # explicit so adding pY_bin to the CSV doesn't shift aux dim
         split_val: 0.1
         split_test: 0.1
         seed: 0

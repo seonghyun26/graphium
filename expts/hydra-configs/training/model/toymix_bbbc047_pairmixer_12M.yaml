@@ -21,7 +21,7 @@ trainer:
   model_checkpoint:
     dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_bbbc047/pairmixer_12M/${now:%Y-%m-%d_%H-%M-%S}/
     filename: "${constants.name}_epoch{epoch:03d}"
-    every_n_epochs: 20           # aligns with check_val_every_n_epoch=20 (linear-probe cadence)
+    every_n_epochs: 10           # aligns with check_val_every_n_epoch=10 (linear-probe cadence)
     save_top_k: -1               # keep every 20-epoch snapshot for post-hoc probing
   trainer:
     precision: bf16-mixed        # PairMixer triangle ops overflow fp16

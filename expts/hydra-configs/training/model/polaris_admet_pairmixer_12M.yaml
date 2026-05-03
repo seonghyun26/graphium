@@ -18,7 +18,7 @@ trainer:
   model_checkpoint:
     dirpath: models_checkpoints/polaris_admet/scratch/pairmixer_12M/${now:%Y-%m-%d_%H-%M-%S}/
     filename: "${constants.name}_epoch{epoch:03d}"
-    every_n_epochs: 20
+    every_n_epochs: 10
     save_top_k: -1
   trainer:
     precision: bf16-mixed
