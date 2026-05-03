@@ -89,6 +89,7 @@ LOSS_DICT = {
     "l1_ipu": IPULosses.L1LossIPU,
     "hybrid_ce_ipu": IPULosses.HybridCELossIPU,
     "cos_align_ipu": IPULosses.CosineAlignmentLossIPU,
+    "zero_loss_ipu": IPULosses.ZeroLossIPU,
 }
 
 

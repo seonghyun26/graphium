@@ -165,6 +165,20 @@ class L1LossIPU(L1Loss):
         return loss
 
 
+class ZeroLossIPU(Module):
+    """No-op loss returning a scalar zero in the input's dtype/device.
+
+    Use case: in multi-task setups where you want a task to be present in the
+    loss_fun dict (so the predictor can still resolve task keys) but its loss
+    must contribute nothing. The actual learning signal for that task comes
+    from elsewhere (e.g., a mid-layer REPA alignment loss added by the
+    Predictor outside the standard loss_fun loop).
+    """
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        return input.new_zeros(())
+
+
 class CosineAlignmentLossIPU(Module):
     """REPA-style alignment loss: 1 - mean cosine similarity between pred and target.
 
