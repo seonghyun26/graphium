@@ -156,13 +156,14 @@ def load_polaris_task(
 # Everything below until ── Metrics ── is lifted verbatim from
 # scripts/pairmixer/pairmixer_dti_eval.py so both ADMET and DTI evals share the
 # exact same mol-embedding code path.
-def _build_datamodule_for_featurization(model_name: str) -> Any:
-    """Compose a minimal Hydra config to get the graphium featurizer.
+def _build_datamodule_and_cfg(model_name: str) -> Tuple[Any, dict]:
+    """Compose a minimal Hydra config to get the graphium featurizer + resolved cfg.
 
     We only need `datamodule.smiles_transformer` (the featurizer partial) — the
     dataset itself is loaded from our benchmark-specific splits. The featurization
     config is inherited from architecture/toymix.yaml, which matches what the
-    PairMixer ESMC ckpt was trained with.
+    PairMixer ESMC ckpt was trained with. The returned cfg lets a scratch
+    (random-init) backbone be built via `load_architecture`.
     """
     with initialize_config_dir(version_base=None, config_dir=str(HYDRA_CFG_DIR)):
         cfg = compose(
@@ -181,7 +182,11 @@ def _build_datamodule_for_featurization(model_name: str) -> Any:
     cfg = OmegaConf.to_container(cfg, resolve=True)
     cfg, accelerator_type = load_accelerator(cfg)
     datamodule = load_datamodule(cfg, accelerator_type)
-    return datamodule
+    return datamodule, cfg
+
+
+def _build_datamodule_for_featurization(model_name: str) -> Any:
+    return _build_datamodule_and_cfg(model_name)[0]
 
 
 @contextlib.contextmanager
@@ -307,13 +312,32 @@ def embed_smiles_cached(
             f"  [pairmixer] embedding {len(missing):,} / {len(unique):,} new SMILES...",
             flush=True,
         )
-        datamodule = _build_datamodule_for_featurization(model_name)
-        smiles_transformer = datamodule.smiles_transformer
         torch_device = torch.device(device)
-        predictor = PredictorModule.load_pretrained_model(
-            name_or_path=ckpt_path, device=str(torch_device),
-        )
-        backbone = predictor.model
+        is_scratch = str(ckpt_path).lower() in ("scratch", "random", "none")
+        if is_scratch:
+            from graphium.config._loader import load_architecture
+            datamodule, cfg = _build_datamodule_and_cfg(model_name)
+            smiles_transformer = datamodule.smiles_transformer
+            model_class, model_kwargs = load_architecture(cfg, in_dims=datamodule.in_dims)
+            backbone = model_class(**model_kwargs)
+        else:
+            datamodule = _build_datamodule_for_featurization(model_name)
+            smiles_transformer = datamodule.smiles_transformer
+            # PyTorch 2.6 flipped ``torch.load``'s default to ``weights_only=True``,
+            # which rejects graphium's pickled-class ckpts. Mirrors the shim in
+            # downstream/model/pairmixer.py — same narrow monkey-patch.
+            _orig_load = torch.load
+            def _trusted_load(*args, **kwargs):
+                kwargs["weights_only"] = False
+                return _orig_load(*args, **kwargs)
+            torch.load = _trusted_load
+            try:
+                predictor = PredictorModule.load_pretrained_model(
+                    name_or_path=ckpt_path, device=str(torch_device),
+                )
+            finally:
+                torch.load = _orig_load
+            backbone = predictor.model
         backbone.to(torch_device)
 
         graphs, kept = _featurize_smiles(missing, smiles_transformer, n_jobs=featurize_n_jobs)
@@ -353,10 +377,23 @@ def fit_and_eval(
     y_fit = np.concatenate([y_train, y_val], axis=0)
 
     if task_type == "regression":
-        model = Ridge(alpha=1.0, random_state=seed) if head == "linear" else MLPRegressor(
-            hidden_layer_sizes=(256, 256), max_iter=500, random_state=seed, early_stopping=True,
-        )
-        model.fit(x_fit, y_fit)
+        if head == "linear":
+            model = Ridge(alpha=1.0, random_state=seed)
+            model.fit(x_fit, y_fit)
+        elif head == "xgboost":
+            from xgboost import XGBRegressor
+            model = XGBRegressor(
+                n_estimators=1000, learning_rate=0.05, max_depth=6,
+                subsample=0.9, colsample_bytree=0.9, reg_lambda=1.0,
+                early_stopping_rounds=30, eval_metric="mae",
+                random_state=seed, n_jobs=8, tree_method="hist",
+            )
+            model.fit(x_train, y_train, eval_set=[(x_val, y_val)], verbose=False)
+        else:
+            model = MLPRegressor(
+                hidden_layer_sizes=(256, 256), max_iter=500, random_state=seed, early_stopping=True,
+            )
+            model.fit(x_fit, y_fit)
         y_pred = model.predict(x_test)
         pear = pearsonr(y_test, y_pred).statistic if len(y_test) > 1 else float("nan")
         spear = spearmanr(y_test, y_pred).statistic if len(y_test) > 1 else float("nan")
@@ -372,10 +409,23 @@ def fit_and_eval(
             "std_target": float(np.std(y_test)),
         }
 
-    model = LogisticRegression(max_iter=1000, random_state=seed) if head == "linear" else MLPClassifier(
-        hidden_layer_sizes=(256, 256), max_iter=500, random_state=seed, early_stopping=True,
-    )
-    model.fit(x_fit, y_fit)
+    if head == "linear":
+        model = LogisticRegression(max_iter=1000, random_state=seed)
+        model.fit(x_fit, y_fit)
+    elif head == "xgboost":
+        from xgboost import XGBClassifier
+        model = XGBClassifier(
+            n_estimators=1000, learning_rate=0.05, max_depth=6,
+            subsample=0.9, colsample_bytree=0.9, reg_lambda=1.0,
+            early_stopping_rounds=30, eval_metric="logloss",
+            random_state=seed, n_jobs=8, tree_method="hist",
+        )
+        model.fit(x_train, y_train, eval_set=[(x_val, y_val)], verbose=False)
+    else:
+        model = MLPClassifier(
+            hidden_layer_sizes=(256, 256), max_iter=500, random_state=seed, early_stopping=True,
+        )
+        model.fit(x_fit, y_fit)
     y_prob = model.predict_proba(x_test)[:, 1]
     return {
         "auroc": float(roc_auc_score(y_test, y_prob)),
@@ -417,7 +467,7 @@ def main() -> None:
     parser.add_argument("--benchmark", choices=["tdc", "polaris"], required=True)
     parser.add_argument("--task", required=True)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--head", choices=["linear", "mlp"], default="mlp")
+    parser.add_argument("--head", choices=["linear", "mlp", "xgboost"], default="mlp")
     parser.add_argument("--device", default=default_device())
     parser.add_argument("--embed-batch-size", type=int, default=32)
     parser.add_argument(
@@ -430,7 +480,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not Path(args.ckpt).exists():
+    if args.ckpt.lower() not in ("scratch", "random", "none") and not Path(args.ckpt).exists():
         sys.exit(f"ERROR: checkpoint not found: {args.ckpt}")
 
     t0 = time.time()

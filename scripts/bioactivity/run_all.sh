@@ -26,7 +26,7 @@ CPCNN_CSV=${CPCNN_CSV:-/home/shpark/prj-molrepr/datacache/jump_cpcnn/jump_cpcnn_
 SINGLE=${SINGLE:-0}
 EXTRA_FLAGS=${EXTRA_FLAGS:-}
 
-if [[ "${PAIRMIXER_CKPT}" != "_" ]]; then
+if [[ "${PAIRMIXER_CKPT}" != "_" && ",${ENCODERS}," != *",pairmixer,"* ]]; then
     ENCODERS="pairmixer,${ENCODERS}"
 fi
 
@@ -50,10 +50,11 @@ for encoder in "${ENCODER_LIST[@]}"; do
     echo "============================================================"
     case "${encoder}" in
         pairmixer)
-            if [[ "${PAIRMIXER_CKPT}" == "_" || ! -f "${PAIRMIXER_CKPT}" ]]; then
-                echo "  SKIP: pairmixer requires a .ckpt as the first argument."
-                continue
-            fi
+            case "${PAIRMIXER_CKPT}" in
+                _) echo "  SKIP: pairmixer requires a .ckpt path or 'scratch' as the first argument."; continue ;;
+                scratch|random|none) ;;
+                *) [[ -f "${PAIRMIXER_CKPT}" ]] || { echo "  SKIP: pairmixer ckpt not found: ${PAIRMIXER_CKPT}"; continue; } ;;
+            esac
             CUDA_VISIBLE_DEVICES=${GPU} python -m downstream.tasks.bioactivity.eval \
                 --encoder pairmixer --ckpt "${PAIRMIXER_CKPT}" "${CV_FLAG[@]}" ${EXTRA_FLAGS}
             ;;

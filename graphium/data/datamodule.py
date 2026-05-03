@@ -1705,17 +1705,24 @@ class MultitaskFromSmilesDataModule(BaseDataModule, IPUDataModuleModifier):
             cols = list(df.columns)
 
         # A star `*` at the beginning or end of the string specifies to look for all
-        # columns that starts/end with a specific string
-        if isinstance(label_cols, str):
-            if label_cols[0] == "*":
-                label_cols = [col for col in cols if str(col).endswith(label_cols[1:])]
-            elif label_cols[-1] == "*":
-                label_cols = [col for col in cols if str(col).startswith(label_cols[:-1])]
-            else:
-                label_cols = [label_cols]
+        # columns that starts/end with a specific string. Lists may mix literals
+        # with `prefix*` / `*suffix` glob items; each glob is expanded against
+        # the available columns and the result is concatenated in order.
+        def _expand(item):
+            if not isinstance(item, str) or "*" not in item:
+                return [item]
+            if item[0] == "*":
+                return [col for col in cols if str(col).endswith(item[1:])]
+            if item[-1] == "*":
+                return [col for col in cols if str(col).startswith(item[:-1])]
+            raise ValueError(f"Glob pattern {item!r} must have * at start or end")
 
+        if isinstance(label_cols, str):
+            label_cols = _expand(label_cols)
         elif label_cols is None:
             label_cols = [col for col in cols if col != smiles_col]
+        else:
+            label_cols = [c for item in label_cols for c in _expand(item)]
 
         return check_arg_iterator(label_cols, enforce_type=list)
 

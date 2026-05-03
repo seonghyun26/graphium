@@ -19,7 +19,7 @@
 # Results: results/downstream/gram_dti.csv (one row per encoder × subset × method × fold × head).
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 eval "$(conda shell.bash hook)"
 conda activate graphium-downstream 2>/dev/null || conda activate graphium
@@ -32,7 +32,7 @@ METHODS=${METHODS:-warm,drug_cold,target_cold}
 FOLDS=${FOLDS:-}
 GPU=${GPU:-0}
 
-if [[ "${PAIRMIXER_CKPT}" != "_" ]]; then
+if [[ "${PAIRMIXER_CKPT}" != "_" && ",${ENCODERS}," != *",pairmixer,"* ]]; then
     ENCODERS="pairmixer,${ENCODERS}"
 fi
 
@@ -57,10 +57,11 @@ for encoder in "${ENCODER_LIST[@]}"; do
     echo "============================================================"
     case "${encoder}" in
         pairmixer)
-            if [[ "${PAIRMIXER_CKPT}" == "_" || ! -f "${PAIRMIXER_CKPT}" ]]; then
-                echo "  SKIP: pairmixer requires a .ckpt as the first argument."
-                continue
-            fi
+            case "${PAIRMIXER_CKPT}" in
+                _) echo "  SKIP: pairmixer requires a .ckpt path or 'scratch' as the first argument."; continue ;;
+                scratch|random|none) ;;
+                *) [[ -f "${PAIRMIXER_CKPT}" ]] || { echo "  SKIP: pairmixer ckpt not found: ${PAIRMIXER_CKPT}"; continue; } ;;
+            esac
             CUDA_VISIBLE_DEVICES=${GPU} python -m downstream.tasks.gram_dti.eval \
                 --encoder pairmixer --ckpt "${PAIRMIXER_CKPT}" --head "${HEAD}" \
                 --subsets "${SUBSET_LIST[@]}" --methods "${METHOD_LIST[@]}" \

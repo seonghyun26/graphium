@@ -100,6 +100,15 @@ class OptimOptions:
         assert self.optim_kwargs["lr"] > 0
         assert self.optim_kwargs["weight_decay"] >= 0
 
+        # Pop optim_impl so it isn't forwarded to the optimizer ctor; default Adam, AdamW for decoupled WD.
+        self.optim_impl = self.optim_kwargs.pop(
+            "optim_impl", getattr(self, "optim_impl", "Adam")
+        )
+        if self.optim_impl not in ("Adam", "AdamW"):
+            raise ValueError(
+                f"optim_impl must be 'Adam' or 'AdamW', got {self.optim_impl!r}"
+            )
+
         # Set the lightning scheduler
         if self.scheduler_kwargs is None:
             self.scheduler_kwargs = {}

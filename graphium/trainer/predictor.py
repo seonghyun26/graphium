@@ -302,7 +302,9 @@ class PredictorModule(lightning.LightningModule):
 
     def configure_optimizers(self, impl=None):
         if impl is None:
-            impl = torch.optim.Adam
+            # Resolve from OptimOptions (set in predictor_options.set_kwargs); AdamW gives decoupled WD.
+            impl_str = getattr(self.optim_options, "optim_impl", "Adam")
+            impl = torch.optim.AdamW if impl_str == "AdamW" else torch.optim.Adam
 
         # Define the optimizer and schedulers
         optimiser = MuAdam(self.parameters(), **self.optim_options.optim_kwargs, impl=impl)

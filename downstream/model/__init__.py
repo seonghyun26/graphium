@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from .base import MoleculeEncoder, bisect_embed
 
 if TYPE_CHECKING:  # pragma: no cover
+    from .kpgt import KPGTEncoder
     from .minimol import MinimolEncoder
     from .mole import MolEEncoder
     from .pairmixer import PairMixerEncoder
@@ -20,6 +21,7 @@ _REGISTRY: dict[str, tuple[str, str]] = {
     "pairmixer": ("downstream.model.pairmixer", "PairMixerEncoder"),
     "minimol":   ("downstream.model.minimol",   "MinimolEncoder"),
     "mole":      ("downstream.model.mole",      "MolEEncoder"),
+    "kpgt":      ("downstream.model.kpgt",      "KPGTEncoder"),
     "ecfp":      ("downstream.model.ecfp",      "ECFPEncoder"),
     "cpcnn":     ("downstream.model.cpcnn",     "CPCNNEncoder"),
 }

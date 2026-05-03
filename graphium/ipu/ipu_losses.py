@@ -12,8 +12,9 @@ Refer to the LICENSE file for the full terms and conditions.
 """
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor
-from torch.nn import BCELoss, BCEWithLogitsLoss, MSELoss, L1Loss
+from torch.nn import BCELoss, BCEWithLogitsLoss, MSELoss, L1Loss, Module
 from torch._C import _infer_size
 from loguru import logger
 from graphium.trainer.losses import HybridCELoss
@@ -162,6 +163,48 @@ class L1LossIPU(L1Loss):
         loss = factor1 * loss * nan_targets.numel() / (num_real_targets + factor2)
 
         return loss
+
+
+class CosineAlignmentLossIPU(Module):
+    """REPA-style alignment loss: 1 - mean cosine similarity between pred and target.
+
+    Following Yu et al. 2024 (REPA), the loss is `-cos(proj(z), y)` where the
+    projector is implemented as the task head's MLP (already (D_trunk -> hidden -> D_out)).
+    Here we just compute the cosine term; the projector is the existing task_head.
+
+    Reshape: predictor.MetricWrapper may flatten (B, d_target) into (B*d_target,)
+    when `multitask_handling=flatten`. We restore (B, d_target) before computing
+    cosine, since cosine is direction-aware over the embedding axis.
+
+    Args:
+        d_target: target embedding dimension. Required to undo `multitask_handling=flatten`.
+        weight:   loss scale (REPA's lambda; paper uses 0.5).
+    """
+
+    def __init__(self, d_target: int, weight: float = 1.0):
+        super().__init__()
+        self.d_target = int(d_target)
+        self.weight = float(weight)
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        target = target.to(input.dtype)
+        # Undo multitask_handling=flatten: (B*D,) or (N, 1) -> (B, D)
+        input = input.reshape(-1, self.d_target)
+        target = target.reshape(-1, self.d_target)
+
+        # Mask rows where any target element is NaN (whole-row missing for embeddings).
+        row_valid = ~target.isnan().any(dim=-1)
+        n_valid = row_valid.sum()
+        if n_valid == 0:
+            return input.new_zeros(())
+
+        input_v = input[row_valid]
+        target_v = target[row_valid]
+        cos = F.cosine_similarity(input_v, target_v, dim=-1)  # (n_valid,)
+        return self.weight * (1.0 - cos.mean())
+
+    def extra_repr(self) -> str:
+        return f"d_target={self.d_target}, weight={self.weight}"
 
 
 class HybridCELossIPU(HybridCELoss):

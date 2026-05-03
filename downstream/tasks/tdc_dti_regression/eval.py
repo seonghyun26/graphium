@@ -55,6 +55,9 @@ def _build_encoder(args) -> "downstream.model.base.MoleculeEncoder":
         return load_encoder("mole", device=args.device, batch_size=args.embed_batch_size_mole)
     if args.encoder == "minimol":
         return load_encoder("minimol", chunk_size=args.embed_batch_size_minimol)
+    if args.encoder == "kpgt":
+        # KPGT runs in a sibling conda env (CPU-only DGL); ignore --device.
+        return load_encoder("kpgt", device="cpu", batch_size=args.embed_batch_size)
     raise ValueError(args.encoder)
 
 

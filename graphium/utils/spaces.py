@@ -77,6 +77,7 @@ RESIDUALS_DICT = {
 LOSS_DICT = {
     "bce": torch.nn.BCELoss,
     "bce_logits": torch.nn.BCEWithLogitsLoss,
+    "bce_logits_ls": Losses.BCEWithLogitsLossLS,
     "mse": torch.nn.MSELoss,
     "l1": torch.nn.L1Loss,
     "mae": torch.nn.L1Loss,
@@ -87,6 +88,7 @@ LOSS_DICT = {
     "mae_ipu": IPULosses.L1LossIPU,
     "l1_ipu": IPULosses.L1LossIPU,
     "hybrid_ce_ipu": IPULosses.HybridCELossIPU,
+    "cos_align_ipu": IPULosses.CosineAlignmentLossIPU,
 }
 
 

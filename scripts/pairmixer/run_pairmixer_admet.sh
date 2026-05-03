@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../common.sh"
 
 eval "$(conda shell.bash hook)"
-conda activate graphium
+conda activate "${CONDA_ENV:-graphium}"
 
 DEVICE="${1:-7}"
 MODEL="${MODEL:-pairmixer_12M}"

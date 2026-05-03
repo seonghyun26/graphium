@@ -36,32 +36,30 @@ from graphium.trainer.predictor import PredictorModule
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-# ── Uni-modal pretrained checkpoints ──
+# Pretrained checkpoints — most recent run per pre-training dataset case
+# (PairMixer 12M backbone for consistent comparison across modalities).
+#
+# Columns:
+#   toymix                  — uni-modal molecular baseline (ToyMix only)
+#   toymix_dti_esmcv2       — + DTI head w/ ESMCv2 protein embeddings
+#   toymix_bbbc047          — + BBBC047 cell-morphology head
+#   toymix_lpm24_litopenai  — + LPM-24 head w/ OpenAI text-embedding-3-small
+#   toymix_all              — all of the above combined
 CHECKPOINTS_UNIMODAL = {
-    "toymix": "models_checkpoints/small-dataset/gpspp_800M/"
-              "2026-03-29_10-49-03_20260329_104903/toymix_gpspp_800M_20260329_104903.ckpt",
-    "dti": "models_checkpoints/dti/gpspp_800M/"
-           "2026-03-21_23-01-44_20260321_230144/dti_gpspp_800M_20260321_230144.ckpt",
-    "rxrx3": "models_checkpoints/rxrx3/gpspp_800M/"
-             "2026-03-18_11-25-09_20260318_112509/rxrx3_gpspp_800M_20260318_112509.ckpt",
-    "largemix": "models_checkpoints/large-dataset/gpspp_800M/"
-                "2026-03-22_11-35-30_20260322_113530/largemix_gpspp_800M_20260322_113530.ckpt",
+    "toymix": "models_checkpoints/small-dataset/pairmixer_12M/"
+              "2026-05-02_01-02-56_20260502_010256/"
+              "toymix_pairmixer_12M_epochepoch=099_20260502_010256.ckpt",
 }
 
-# ── Multi-modal pretrained checkpoints ──
 CHECKPOINTS_MULTIMODAL = {
-    "toymix_dti": "models_checkpoints/toymix-dti/gpspp_800M/"
-                  "2026-03-21_22-57-10_20260321_225710/toymix_dti_gpspp_800M_20260321_225710.ckpt",
-    "toymix_rxrx3": "models_checkpoints/toymix-rxrx3/gpspp_800M/"
-                    "2026-03-21_23-23-12_20260321_232312/toymix_rxrx3_gpspp_800M_20260321_232312.ckpt",
-    "toymix_bbbc047": "models_checkpoints/toymix_bbbc047/gpspp_800M/"
-                      "2026-03-26_17-42-01_20260326_174201/toymix_bbbc047_gpspp_800M_20260326_174201.ckpt",
-    "rxrx3_dti": "models_checkpoints/rxrx3-dti/gpspp_800M/"
-                 "2026-03-21_23-54-24_20260321_235424/rxrx3_dti_gpspp_800M_20260321_235424.ckpt",
-    "toymix_rxrx3_dti": "models_checkpoints/toymix-rxrx3-dti/gpspp_800M/"
-                        "2026-03-23_00-38-51_20260323_003851/toymix_rxrx3_dti_gpspp_800M_20260323_003851.ckpt",
-    "largemix_dti": "models_checkpoints/largemix-dti/gpspp_800M/"
-                    "2026-03-23_11-40-10_20260323_114010/largemix_dti_gpspp_800M_20260323_114010.ckpt",
+    "toymix_dti_esmcv2": "models_checkpoints/toymix-dti-esmc-v2/pairmixer_12M/"
+                         "2026-04-28_01-54-53_20260428_015453/last.ckpt",
+    "toymix_bbbc047": "models_checkpoints/toymix_bbbc047/pairmixer_12M/"
+                      "2026-04-18_11-20-55_20260418_112055/last.ckpt",
+    "toymix_lpm24_litopenai": "models_checkpoints/toymix-lpm24-litopenai/pairmixer_12M/"
+                              "2026-04-24_22-23-52_20260424_222352/last.ckpt",
+    "toymix_all": "models_checkpoints/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047/pairmixer_12M/"
+                  "2026-05-03_01-18-55_20260503_011855/last.ckpt",
 }
 
 CHECKPOINTS = {**CHECKPOINTS_UNIMODAL, **CHECKPOINTS_MULTIMODAL}
@@ -115,11 +113,19 @@ TASK_TYPES = {
     "ames": "classification", "dili": "classification",
 }
 
-# Featurization config matching the architecture YAML
+# Featurization config — matches PairMixer 12M's expanded RDKit feature set
+# (see expts/hydra-configs/model/pairmixer_12M.yaml). All 5 checkpoints in this
+# analysis are PairMixer 12M, trained with this featurization.
 FEATURIZATION = {
-    "atom_property_list_onehot": ["atomic-number", "group", "period", "total-valence"],
-    "atom_property_list_float": ["degree", "formal-charge", "radical-electron", "aromatic", "in-ring"],
-    "edge_property_list": ["bond-type-onehot", "stereo", "in-ring"],
+    "atom_property_list_onehot": [
+        "atomic-number", "group", "period", "total-valence",
+        "hybridization", "chirality",
+    ],
+    "atom_property_list_float": [
+        "degree", "formal-charge", "radical-electron", "aromatic", "in-ring",
+        "mass", "electronegativity", "vdw-radius", "num-ring",
+    ],
+    "edge_property_list": ["bond-type-onehot", "stereo", "in-ring", "conjugated"],
     "add_self_loop": False,
     "explicit_H": False,
     "use_bonds_weights": False,

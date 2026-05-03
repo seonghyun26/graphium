@@ -134,32 +134,90 @@ MOLGPS = {
     'cyp2c9_veith':                     (0.838, 0.0),
 }
 
-# MolE (AtomEnvs + Supervised) per-task ADMET results from the paper
-# "MolE: a molecular foundation model for drug discovery" (Nature Communications;
-# values from arXiv:2211.02657 Table 4 which matches the Nature Table 1).
+# MolE per-task ADMET results from the published Nature Communications 2024 paper
+# "MolE: a molecular foundation model for drug discovery" (doi:10.1038/s41467-024-53751-y),
+# Table 1. These supersede the arXiv v1 (2022 leaderboard snapshot) numbers.
 MOLE = {
-    'caco2_wang':                       (0.310, 0.010),
-    'hia_hou':                          (0.963, 0.019),
-    'pgp_broccatelli':                  (0.915, 0.005),
-    'bioavailability_ma':               (0.654, 0.028),
-    'lipophilicity_astrazeneca':        (0.469, 0.009),
-    'solubility_aqsoldb':               (0.792, 0.005),
-    'bbb_martins':                      (0.903, 0.005),
-    'ppbr_az':                          (8.073, 0.335),
-    'vdss_lombardo':                    (0.654, 0.031),
-    'cyp2d6_veith':                     (0.682, 0.008),
-    'cyp3a4_veith':                     (0.867, 0.003),
-    'cyp2c9_veith':                     (0.801, 0.003),
-    'cyp2d6_substrate_carbonmangels':   (0.699, 0.018),
-    'cyp3a4_substrate_carbonmangels':   (0.670, 0.018),
-    'cyp2c9_substrate_carbonmangels':   (0.446, 0.062),
-    'half_life_obach':                  (0.549, 0.024),
-    'clearance_microsome_az':           (0.607, 0.027),
-    'clearance_hepatocyte_az':          (0.381, 0.038),
-    'herg':                             (0.823, 0.009),
-    'ames':                             (0.813, 0.005),
-    'dili':                             (0.883, 0.021),
-    'ld50_zhu':                         (0.577, 0.019),
+    'caco2_wang':                       (0.329, 0.008),
+    'hia_hou':                          (0.984, 0.005),
+    'pgp_broccatelli':                  (0.930, 0.005),
+    'bioavailability_ma':               (0.640, 0.046),
+    'lipophilicity_astrazeneca':        (0.406, 0.009),
+    'solubility_aqsoldb':               (0.776, 0.019),
+    'bbb_martins':                      (0.903, 0.003),
+    'ppbr_az':                          (7.229, 0.168),
+    'vdss_lombardo':                    (0.644, 0.013),
+    'cyp2d6_veith':                     (0.679, 0.006),
+    'cyp3a4_veith':                     (0.876, 0.002),
+    'cyp2c9_veith':                     (0.782, 0.001),
+    'cyp2d6_substrate_carbonmangels':   (0.692, 0.017),
+    'cyp3a4_substrate_carbonmangels':   (0.692, 0.019),
+    'cyp2c9_substrate_carbonmangels':   (0.409, 0.014),
+    'half_life_obach':                  (0.578, 0.032),
+    'clearance_microsome_az':           (0.632, 0.008),
+    'clearance_hepatocyte_az':          (0.456, 0.027),
+    'herg':                             (0.835, 0.018),
+    'ames':                             (0.834, 0.015),
+    'dili':                             (0.852, 0.022),
+    'ld50_zhu':                         (0.602, 0.016),
+}
+
+# KPGT per-task ADMET results from
+# "A knowledge-guided pre-training framework for improving molecular
+#  representation learning" (Nature Communications 2023; doi:10.1038/s41467-023-43214-1),
+# Supplementary Table 8 (page 32). Mean ± std over 5 independent runs.
+KPGT = {
+    'caco2_wang':                       (0.284, 0.009),
+    'hia_hou':                          (0.982, 0.004),
+    'pgp_broccatelli':                  (0.938, 0.004),
+    'bioavailability_ma':               (0.750, 0.022),
+    'lipophilicity_astrazeneca':        (0.446, 0.016),
+    'solubility_aqsoldb':               (0.714, 0.011),
+    'bbb_martins':                      (0.908, 0.005),
+    'ppbr_az':                          (7.684, 0.250),
+    'vdss_lombardo':                    (0.633, 0.016),
+    'cyp2d6_veith':                     (0.724, 0.008),
+    'cyp3a4_veith':                     (0.894, 0.004),
+    'cyp2c9_veith':                     (0.797, 0.006),
+    'cyp2c9_substrate_carbonmangels':   (0.450, 0.044),
+    'cyp2d6_substrate_carbonmangels':   (0.737, 0.016),
+    'cyp3a4_substrate_carbonmangels':   (0.730, 0.023),
+    'half_life_obach':                  (0.531, 0.030),
+    'clearance_hepatocyte_az':          (0.424, 0.019),
+    'clearance_microsome_az':           (0.637, 0.010),
+    'ld50_zhu':                         (0.545, 0.010),
+    'herg':                             (0.847, 0.024),
+    'ames':                             (0.868, 0.003),
+    'dili':                             (0.929, 0.013),
+}
+
+# QIP per-task ADMET results from
+# Kim et al., "Quantum-Informed Molecular Representation Learning Enhancing
+#  ADMET Property Prediction" (J. Chem. Inf. Model. 2024;
+#  doi:10.1021/acs.jcim.4c00772), Table 1 ("Ours (HAD)" column).
+QIP = {
+    'caco2_wang':                       (0.268, 0.012),
+    'hia_hou':                          (0.995, 0.004),
+    'pgp_broccatelli':                  (0.927, 0.005),
+    'bioavailability_ma':               (0.725, 0.017),
+    'lipophilicity_astrazeneca':        (0.442, 0.005),
+    'solubility_aqsoldb':               (0.707, 0.007),
+    'bbb_martins':                      (0.902, 0.009),
+    'ppbr_az':                          (7.364, 0.069),
+    'vdss_lombardo':                    (0.608, 0.038),
+    'cyp2c9_veith':                     (0.787, 0.011),
+    'cyp2d6_veith':                     (0.657, 0.015),
+    'cyp3a4_veith':                     (0.871, 0.006),
+    'cyp2c9_substrate_carbonmangels':   (0.519, 0.036),
+    'cyp2d6_substrate_carbonmangels':   (0.665, 0.028),
+    'cyp3a4_substrate_carbonmangels':   (0.624, 0.037),
+    'half_life_obach':                  (0.529, 0.047),
+    'clearance_hepatocyte_az':          (0.508, 0.035),
+    'clearance_microsome_az':           (0.658, 0.005),
+    'ld50_zhu':                         (0.562, 0.012),
+    'herg':                             (0.813, 0.006),
+    'ames':                             (0.857, 0.010),
+    'dili':                             (0.885, 0.023),
 }
 
 # MiniMol (GINE) per-task ADMET results from the official repo README.
@@ -188,6 +246,31 @@ MINIMOL_GIT = {
     'ames':                             (0.849, 0.004),
     'dili':                             (0.956, 0.006),
 }
+
+
+PROBE_ENSEMBLE_CSV = Path(__file__).parent / '../results/pairmixer_minimol_probe_ensemble.csv'
+
+
+def load_probe_ensemble_dict(pretrain_label, model='pairmixer_12M', csv_path=None):
+    """Load the MiniMol-style probe-ensemble results and return ``{task: (mean, std)}``.
+
+    Reads ``results/pairmixer_minimol_probe_ensemble.csv`` and selects rows matching
+    ``(model, pretrain_label)``. Replicate rows for the same task are deduped to the
+    latest timestamp. Returns an empty dict if the file or row group is missing.
+    """
+    if csv_path is None:
+        csv_path = PROBE_ENSEMBLE_CSV
+    csv_path = Path(csv_path)
+    if not csv_path.exists():
+        return {}
+    df = pd.read_csv(csv_path)
+    sub = df[(df['model'] == model) & (df['pretrain'] == pretrain_label)].copy()
+    if sub.empty:
+        return {}
+    sub['timestamp'] = pd.to_datetime(sub['timestamp'], errors='coerce')
+    sub = sub.sort_values('timestamp').drop_duplicates(subset=['task'], keep='last')
+    return {row['task']: (float(row['metric_mean']), float(row['metric_std']))
+            for _, row in sub.iterrows()}
 
 
 def get_sota(task):
@@ -271,6 +354,10 @@ _PRETRAIN_PATTERNS = [
     # Three-component patterns MUST come before two-component ones
     ('toymix_rxrx3_dti',   ['toymix_rxrx3_dti', 'toymix-rxrx3-dti', 'toymixrxrx3dti']),
     ('largemix_rxrx3_dti', ['largemix_rxrx3_dti', 'largemix-rxrx3-dti', 'largemixrxrx3dti']),
+    # 4dset combined pretrain — checked first because its checkpoint path
+    # contains 'toymix_dti_esmc_v2' as a substring and would otherwise be
+    # misidentified as the plain DTI v2 ckpt.
+    ('4dset_ep99', ['4dset_ep99', '4dset-ep99', 'lpm24_litopenai_bbbc047', 'lpm24-litopenai-bbbc047']),
     # DTI v2 variants (MUST come before toymix_dti / dti patterns)
     ('toymix_dti_esmc_v2', ['toymix_dti_esmc_v2', 'toymix-dti-esmc-v2']),
     ('toymix_dti_v2',      ['toymix_dti_v2', 'toymix-dti-v2']),

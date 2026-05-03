@@ -28,6 +28,7 @@ DEFAULT_ENCODER_LABELS = {
     "cpcnn": "CPCNN (paper cell-painting)",
     "minimol": "MiniMol",
     "mole": "MolE",
+    "kpgt": "KPGT",
     "pairmixer": "PairMixer 12M",
 }
 DEFAULT_MODEL_ORDER = [
@@ -35,6 +36,7 @@ DEFAULT_MODEL_ORDER = [
     "CPCNN (paper cell-painting)",
     "MiniMol",
     "MolE",
+    "KPGT",
     "PairMixer 12M",
 ]
 DEFAULT_METRIC_COLS = [

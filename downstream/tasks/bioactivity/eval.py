@@ -52,6 +52,10 @@ def _build_encoder(args) -> "downstream.model.base.MoleculeEncoder":
         return load_encoder("mole", device=args.device, batch_size=args.embed_batch_size_mole)
     if args.encoder == "minimol":
         return load_encoder("minimol", chunk_size=args.embed_batch_size_minimol)
+    if args.encoder == "kpgt":
+        # KPGT runs in a sibling conda env; its DGL build has no CUDA backend,
+        # so pin to CPU regardless of what --device says.
+        return load_encoder("kpgt", device="cpu", batch_size=args.embed_batch_size)
     if args.encoder == "ecfp":
         return load_encoder("ecfp", n_bits=args.n_bits)
     if args.encoder == "cpcnn":

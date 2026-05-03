@@ -127,6 +127,9 @@ def _build_encoder(args) -> "downstream.model.base.MoleculeEncoder":
         kwargs = dict(device=args.device, batch_size=args.embed_batch_size_mole)
     elif args.encoder == "minimol":
         kwargs = dict(chunk_size=args.embed_batch_size_minimol)
+    elif args.encoder == "kpgt":
+        # KPGT subprocess uses a CPU-only DGL build — see downstream/model/kpgt.py.
+        kwargs = dict(device="cpu", batch_size=args.embed_batch_size)
     return load_encoder(args.encoder, **kwargs)
 
 

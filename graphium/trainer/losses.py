@@ -104,3 +104,18 @@ class HybridCELoss(_WeightedLoss):
         )
 
         return self.alpha * ce_loss + (1 - self.alpha) * regression_loss
+
+
+class BCEWithLogitsLossLS(torch.nn.BCEWithLogitsLoss):
+    """BCE-with-logits with on-target label smoothing (eps default 0.05)."""
+
+    def __init__(self, label_smoothing: float = 0.05, **kwargs) -> None:
+        super().__init__(**kwargs)
+        if not 0.0 <= label_smoothing < 0.5:
+            raise ValueError(f"label_smoothing must be in [0, 0.5), got {label_smoothing}")
+        self.label_smoothing = float(label_smoothing)
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        target = target.float()
+        smoothed = target * (1.0 - self.label_smoothing) + (1.0 - target) * self.label_smoothing
+        return super().forward(input, smoothed)

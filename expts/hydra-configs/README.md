@@ -164,5 +164,5 @@ trainer:
     precision: 16
     max_epochs: *max_epochs
     min_epochs: 1
-    check_val_every_n_epoch: 20
+    check_val_every_n_epoch: 10
 ```
