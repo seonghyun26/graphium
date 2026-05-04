@@ -16,7 +16,7 @@ datamodule:
   args:
     task_specific_args:
       dti_pactivity:
-        df_path: data/dti-processed/dti_pactivity_esmc_100k.csv
+        df_path: data/dti-processed/dti_pactivity_esmc_100k_max100.csv
         smiles_col: "SMILES_nometa"
         label_cols: ["pY", "prot_emb_*"]
         split_val: 0.1
@@ -24,7 +24,7 @@ datamodule:
         seed: 0
         task_level: graph
       dti_pactivity_bin:
-        df_path: data/dti-processed/dti_pactivity_esmc_100k.csv
+        df_path: data/dti-processed/dti_pactivity_esmc_100k_max100.csv
         smiles_col: "SMILES_nometa"
         label_cols: ["pY_bin", "prot_emb_*"]
         split_val: 0.1

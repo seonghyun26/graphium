@@ -1,0 +1,52 @@
+# @package _global_
+# 4-dataset PairMixer 12M with:
+#   * ToyMix supervised losses at the final layer
+#   * Mid-layer REPA alignment for DTI / LPM24 / BBBC047 embeddings
+#   * Final-layer Boltz REPA alignment on pair features
+#   * EMA enabled for eval / checkpoint export
+#
+# Note: Boltz REPA is currently implemented on the FINAL PairMixer layer in
+# `graphium/trainer/predictor.py`; only the DTI/LPM24/BBBC047 REPA path is
+# configurable to run at a middle layer.
+#
+# Compose with:
+#   tasks=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047
+#   training=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047
+#   architecture=toymix
+#   model=pairmixer_12M
+#   training/model=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_repa_mid_boltz_ema
+
+defaults:
+  - toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_repa_mid
+
+constants:
+  name: toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_repa_mid_boltz_ema
+
+datamodule:
+  args:
+    boltz_pair_h5_paths:
+      - /home/shpark/prj-molrepr/graphium/data/boltz_pair/boltz_pair.shard0.h5
+      - /home/shpark/prj-molrepr/graphium/data/boltz_pair/boltz_pair.shard1.h5
+      - /home/shpark/prj-molrepr/graphium/data/boltz_pair/boltz_pair.shard2.h5
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047/pairmixer_12M_repa_mid_boltz_ema/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    gradient_clip_val: 1.0
+    gradient_clip_algorithm: norm
+  ema:
+    enabled: true
+    decay: 0.999
+    use_for_validation: true
+    use_for_test: true
+    save_ema_checkpoint: true
+
+predictor:
+  optim_kwargs:
+    weight_decay: 0.01
+    optim_impl: AdamW
+  boltz_repa_kwargs:
+    d_pair_g: 224
+    d_pair_b: 128
+    loss_weight: 0.1

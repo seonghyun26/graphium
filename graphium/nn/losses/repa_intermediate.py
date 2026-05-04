@@ -86,31 +86,40 @@ class RepaIntermediateAlignment(nn.Module):
         pair_feat_mid: torch.Tensor,                       # (B, N, N, D_z)
         pair_mask: torch.Tensor,                           # (B, N, N) bool/0-1
         targets: Dict[str, torch.Tensor],                  # batch.labels dict
-    ) -> torch.Tensor:
-        """Sum of weighted per-task cosine alignment losses."""
+    ) -> Dict[str, torch.Tensor]:
+        """Per-task weighted cosine alignment losses.
+
+        Returns a dict {task_name: weighted_scalar_loss} with **always** the
+        same set of keys (every task in self.tasks), to keep DDP all-reduce
+        safe — uneven keys across ranks deadlocks NCCL watchdogs. Tasks whose
+        target is missing or fully NaN-masked contribute a zero-tensor.
+        """
         if pair_mask.dtype != pair_feat_mid.dtype:
             pair_mask_t = pair_mask.to(pair_feat_mid.dtype)
         else:
             pair_mask_t = pair_mask
         pooled = self._pool_pair_mean(pair_feat_mid, pair_mask_t)  # (B, D_z)
+        zero = pooled.new_zeros(())
 
-        total = pair_feat_mid.new_zeros(())
+        per_task: Dict[str, torch.Tensor] = {}
         for name, cfg in self.tasks.items():
             tgt = targets.get(cfg["label_key"], None)
             if tgt is None:
+                per_task[name] = zero
                 continue
             tgt = tgt.to(pooled.dtype)
             # Reshape if the dataloader collated to (B*D_target,) or (N, 1).
             tgt = tgt.reshape(-1, cfg["d_target"])
             row_valid = ~tgt.isnan().any(dim=-1)
             if row_valid.sum() == 0:
+                per_task[name] = zero
                 continue
             proj = self.projectors[name](pooled)               # (B, D_target)
             cos = F.cosine_similarity(
                 proj[row_valid], tgt[row_valid], dim=-1
             )
-            total = total + cfg["weight"] * (1.0 - cos.mean())
-        return total
+            per_task[name] = cfg["weight"] * (1.0 - cos.mean())
+        return per_task
 
     def extra_repr(self) -> str:
         parts = [f"d_pair={self.d_pair}"]

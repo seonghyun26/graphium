@@ -565,6 +565,9 @@ class PredictorModule(lightning.LightningModule):
         """Compute REPA cosine alignment on a mid-layer pair representation
         against precomputed per-modality target embeddings (DTI ESM-C,
         LPM-24 OpenAI, BBBC047 Cell Painting).
+
+        Logs per-task and aggregate alignment loss to the trainer logger so
+        each modality's curve is visible separately on W&B.
         """
         feats = batch.get("features")
         if feats is None or self._repa_intermediate_capture_layer is None:
@@ -579,7 +582,29 @@ class PredictorModule(lightning.LightningModule):
 
             _, node_mask = to_dense_batch(feats.x, feats.batch)
             pair_mask = node_mask.unsqueeze(2) & node_mask.unsqueeze(1)
-        return self.repa_intermediate_loss(pair_feat, pair_mask, targets)
+        per_task = self.repa_intermediate_loss(pair_feat, pair_mask, targets)
+        if not per_task:
+            return None
+        total = sum(per_task.values())
+        # Log per-task and aggregate so each modality's alignment curve is
+        # visible separately on W&B. NOTE: sync_dist=False (default) is
+        # required — uneven per-task availability across DDP ranks would
+        # deadlock NCCL all-reduce when some ranks have no valid rows for a
+        # task. We accept rank-0 monitoring values as representative.
+        for name, val in per_task.items():
+            self.log(
+                f"train/loss_repa_mid/{name}",
+                val.detach(),
+                on_step=False,
+                on_epoch=True,
+            )
+        self.log(
+            "train/loss_repa_mid/total",
+            total.detach(),
+            on_step=False,
+            on_epoch=True,
+        )
+        return total
 
     def _general_step(self, batch: Dict[str, Tensor], step_name: str, to_cpu: bool) -> Dict[str, Any]:
         r"""Common code for training_step, validation_step and testing_step"""
@@ -637,6 +662,12 @@ class PredictorModule(lightning.LightningModule):
             repa_loss = self._compute_boltz_repa_loss(batch)
             if repa_loss is not None:
                 loss = loss + repa_loss.to(loss.device)
+                self.log(
+                    "train/boltz_repa_loss",
+                    repa_loss.detach(),
+                    on_step=False,
+                    on_epoch=True,
+                )
 
         # Mid-layer REPA alignment loss (training only).
         if step_name == "train" and self.repa_intermediate_loss is not None:

@@ -91,12 +91,12 @@ TDC_SOTA = {
     'bbb_martins':                      (0.941, 0.000, 'MolGPS(paper)'),
     'ppbr_az':                          (6.464, 0.000, 'MolGPS(paper)'),
     'vdss_lombardo':                    (0.713, 0.007, 'MapLight + GNN'),
+    'cyp2c9_veith':                     (0.859, 0.001, 'MapLight + GNN'),
     'cyp2d6_veith':                     (0.790, 0.001, 'MapLight + GNN'),
     'cyp3a4_veith':                     (0.916, 0.000, 'MapLight + GNN'),
-    'cyp2c9_veith':                     (0.859, 0.001, 'MapLight + GNN'),
     'cyp2c9_substrate_carbonmangels':   (0.474, 0.025, 'MiniMol'),
     'cyp2d6_substrate_carbonmangels':   (0.737, 0.024, 'KPGT'),
-    'cyp3a4_substrate_carbonmangels':   (0.680, 0.000, 'MolGPS(paper)'),
+    'cyp3a4_substrate_carbonmangels':   (0.730, 0.023, 'MolGPS(paper)'),
     'half_life_obach':                  (0.631, 0.000, 'MolGPS(paper)'),
     'clearance_hepatocyte_az':          (0.570, 0.000, 'MolGPS(paper)'),
     'clearance_microsome_az':           (0.633, 0.000, 'MolGPS(paper)'),
@@ -251,12 +251,60 @@ MINIMOL_GIT = {
 PROBE_ENSEMBLE_CSV = Path(__file__).parent / '../results/pairmixer_minimol_probe_ensemble.csv'
 
 
-def load_probe_ensemble_dict(pretrain_label, model='pairmixer_12M', csv_path=None):
+def _select_probe_rows(sub, selection='latest'):
+    """Select one probe row per task.
+
+    Parameters
+    ----------
+    sub : DataFrame
+        Probe-ensemble rows for a fixed (model, pretrain[, ckpt subset]).
+    selection : {'latest', 'best'}
+        ``latest`` keeps the most recent timestamp per task.
+        ``best`` keeps the best ``metric_mean`` per task using ``TASK_METRICS`` to
+        decide whether lower or higher is better; ties break by latest timestamp.
+    """
+    sub = sub.copy()
+    sub['timestamp'] = pd.to_datetime(sub['timestamp'], errors='coerce')
+
+    if selection == 'latest':
+        return sub.sort_values('timestamp').drop_duplicates(subset=['task'], keep='last')
+    if selection != 'best':
+        raise ValueError(f'Unknown probe selection mode: {selection}')
+
+    sub['_metric_mean'] = pd.to_numeric(sub['metric_mean'], errors='coerce')
+    rows = []
+    for task, grp in sub.groupby('task', sort=False):
+        valid = grp[grp['_metric_mean'].notna()].copy()
+        if valid.empty:
+            chosen = grp.sort_values('timestamp').tail(1)
+        else:
+            direction = TASK_METRICS.get(task, (None, 'higher'))[1]
+            best_val = valid['_metric_mean'].min() if direction == 'lower' else valid['_metric_mean'].max()
+            chosen = valid[valid['_metric_mean'] == best_val].sort_values('timestamp').tail(1)
+        rows.append(chosen)
+
+    if not rows:
+        return sub.iloc[0:0]
+    return pd.concat(rows, ignore_index=False)
+
+
+def load_probe_ensemble_dict(
+    pretrain_label,
+    model='pairmixer_12M',
+    csv_path=None,
+    selection='latest',
+    ckpt_tag_contains=None,
+    ckpt_tags=None,
+):
     """Load the MiniMol-style probe-ensemble results and return ``{task: (mean, std)}``.
 
     Reads ``results/pairmixer_minimol_probe_ensemble.csv`` and selects rows matching
-    ``(model, pretrain_label)``. Replicate rows for the same task are deduped to the
-    latest timestamp. Returns an empty dict if the file or row group is missing.
+    ``(model, pretrain_label)`` plus optional ckpt-tag filters. Replicate rows for the
+    same task are reduced according to ``selection``:
+      - ``latest``: latest timestamp
+      - ``best``: best ``metric_mean`` per task, with latest timestamp as tie-breaker
+
+    Returns an empty dict if the file or row group is missing.
     """
     if csv_path is None:
         csv_path = PROBE_ENSEMBLE_CSV
@@ -267,8 +315,13 @@ def load_probe_ensemble_dict(pretrain_label, model='pairmixer_12M', csv_path=Non
     sub = df[(df['model'] == model) & (df['pretrain'] == pretrain_label)].copy()
     if sub.empty:
         return {}
-    sub['timestamp'] = pd.to_datetime(sub['timestamp'], errors='coerce')
-    sub = sub.sort_values('timestamp').drop_duplicates(subset=['task'], keep='last')
+    if ckpt_tag_contains is not None:
+        sub = sub[sub['ckpt_tag'].astype(str).str.contains(ckpt_tag_contains, na=False)]
+    if ckpt_tags is not None:
+        sub = sub[sub['ckpt_tag'].astype(str).isin(list(ckpt_tags))]
+    if sub.empty:
+        return {}
+    sub = _select_probe_rows(sub, selection=selection)
     return {row['task']: (float(row['metric_mean']), float(row['metric_std']))
             for _, row in sub.iterrows()}
 

@@ -1,0 +1,38 @@
+# @package _global_
+# REPA + EMA variant of the 4-dataset PairMixer 12M pretrain.
+#
+# Inherits the 4ds REPA config and explicitly enables:
+#   * EMA over model weights for eval / checkpoint export
+#   * decoupled AdamW weight decay
+#   * gradient clipping
+#
+# Compose with:
+#   tasks=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047
+#   training=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047
+#   architecture=toymix
+#   model=pairmixer_12M
+#   training/model=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_repa_ema
+
+defaults:
+  - toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_repa
+
+constants:
+  name: toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_repa_ema
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047/pairmixer_12M_repa_ema/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    gradient_clip_val: 1.0
+    gradient_clip_algorithm: norm
+  ema:
+    enabled: true
+    decay: 0.999
+    use_for_validation: true
+    use_for_test: true
+    save_ema_checkpoint: true
+
+predictor:
+  optim_kwargs:
+    weight_decay: 0.01
+    optim_impl: AdamW

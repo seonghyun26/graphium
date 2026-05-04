@@ -40,5 +40,6 @@ trainer:
 
 predictor:
   optim_kwargs:
+    lr: 1.e-4                   # lower than the 3e-4 dataset default; 4ds PairMixer 12M probes peaked early
     weight_decay: 0.01           # decoupled WD via AdamW; pretrain regularization for the heavy multi-task heads
     optim_impl: AdamW

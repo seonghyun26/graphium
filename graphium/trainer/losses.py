@@ -107,7 +107,14 @@ class HybridCELoss(_WeightedLoss):
 
 
 class BCEWithLogitsLossLS(torch.nn.BCEWithLogitsLoss):
-    """BCE-with-logits with on-target label smoothing (eps default 0.05)."""
+    """BCE-with-logits with on-target label smoothing (eps default 0.05).
+
+    Mirrors graphium's multi-task NaN-handling convention: targets that are NaN
+    (samples from other tasks in a multi-task batch) get zero weight and the
+    loss is the mean over the remaining valid positions. Without this the
+    binary loss would be NaN any time the batch contained foreign-task
+    samples — see BCEWithLogitsLossIPU for the same pattern on IPU.
+    """
 
     def __init__(self, label_smoothing: float = 0.05, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -116,6 +123,11 @@ class BCEWithLogitsLossLS(torch.nn.BCEWithLogitsLoss):
         self.label_smoothing = float(label_smoothing)
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
-        target = target.float()
-        smoothed = target * (1.0 - self.label_smoothing) + (1.0 - target) * self.label_smoothing
-        return super().forward(input, smoothed)
+        target = target.to(input.dtype)
+        valid = ~target.isnan()
+        target_clean = torch.where(valid, target, torch.zeros_like(target))
+        smoothed = target_clean * (1.0 - self.label_smoothing) + (1.0 - target_clean) * self.label_smoothing
+        bce = F.binary_cross_entropy_with_logits(input, smoothed, reduction="none")
+        bce = bce * valid.to(bce.dtype)
+        n_valid = valid.sum().clamp_min(1)
+        return bce.sum() / n_valid

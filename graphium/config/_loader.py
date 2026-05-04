@@ -494,6 +494,28 @@ def load_trainer(
 
         callbacks.append(ADMETFinetuneCallback(ft_monitor_cfg))
 
+    # Optional exponential moving average of model weights. Enable with
+    # `trainer.ema=true` (defaults) or a dict, e.g.
+    #   trainer:
+    #     ema:
+    #       decay: 0.999
+    #       use_for_validation: true
+    #       use_for_test: true
+    #       save_ema_checkpoint: true
+    ema_cfg = cfg_trainer.get("ema") if hasattr(cfg_trainer, "get") else None
+    if ema_cfg:
+        from graphium.callbacks.ema import EMACallback
+
+        if isinstance(ema_cfg, bool):
+            ema_kwargs: Dict[str, Any] = {}
+            ema_enabled = True
+        else:
+            ema_dict = dict(ema_cfg)
+            ema_enabled = bool(ema_dict.pop("enabled", True))
+            ema_kwargs = ema_dict
+        if ema_enabled:
+            callbacks.append(EMACallback(**ema_kwargs))
+
     # Define the logger parameters
     wandb_cfg = config["constants"].get("wandb")
     if wandb_cfg is not None:
