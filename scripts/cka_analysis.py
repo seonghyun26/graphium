@@ -58,8 +58,9 @@ CHECKPOINTS_MULTIMODAL = {
                       "2026-04-18_11-20-55_20260418_112055/last.ckpt",
     "toymix_lpm24_litopenai": "models_checkpoints/toymix-lpm24-litopenai/pairmixer_12M/"
                               "2026-04-24_22-23-52_20260424_222352/last.ckpt",
-    "toymix_all": "models_checkpoints/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047/pairmixer_12M/"
-                  "2026-05-03_01-18-55_20260503_011855/last.ckpt",
+    # "toymix_all": "models_checkpoints/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047/pairmixer_12M/"
+    #               "2026-05-03_01-18-55_20260503_011855/last.ckpt",
+    "toymix_all": "models_checkpoints/toymix_dti_esmc_v3_litmolformer_v2_bbbc047/pairmixer_12M_ema/2026-05-05_18-24-47_20260505_182447/toymix_dti_esmc_v3_litmolformer_v2_bbbc047_pairmixer_12M_ema_epochepoch=059_20260505_182447.ckpt"
 }
 
 CHECKPOINTS = {**CHECKPOINTS_UNIMODAL, **CHECKPOINTS_MULTIMODAL}

@@ -1,0 +1,46 @@
+# @package _global_
+# PairMixer 12M, plain multi-task pretrain (NO mid-layer / Boltz REPA), with:
+#   * Final-layer task heads for ToyMix + 3 dense aux modalities (DTI / LPM-24
+#     / BBBC047) — supervision flows through standard heads, NOT through REPA
+#     intermediate-layer cosine alignment.
+#   * Cosine-similarity loss (`cos_align_ipu`) for the 3 dense regressions
+#     instead of MAE — equivalent to "negative cosine similarity, like REPA"
+#     but applied at the FINAL layer through the regular task heads.
+#   * EMA (decay 0.999) enabled for eval / checkpoint export.
+#   * AdamW (wd=0.01) + gradient clip 1.0 (norm) inherited from the base.
+#
+# Compose with:
+#   tasks=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047
+#   training=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047
+#   architecture=toymix
+#   model=pairmixer_12M
+#   training/model=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_cos_align_ema
+
+defaults:
+  - toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M
+
+constants:
+  name: toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_cos_align_ema
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047/pairmixer_12M_cos_align_ema/${now:%Y-%m-%d_%H-%M-%S}/
+  ema:
+    enabled: true
+    decay: 0.999
+    use_for_validation: true
+    use_for_test: true
+    save_ema_checkpoint: true
+
+predictor:
+  # Override only the 3 dense aux losses to cosine alignment; ToyMix tasks
+  # keep their natural metrics. Cosine on dense embedding targets makes the
+  # loss invariant to magnitude (only direction matters), which mirrors the
+  # REPA training signal but applied at the final task head, not mid-layer.
+  loss_fun:
+    dti:     cos_align_ipu
+    lpm24:   cos_align_ipu
+    bbbc047: cos_align_ipu
+    qm9:     mae_ipu
+    tox21:   bce_logits_ipu
+    zinc:    mae_ipu

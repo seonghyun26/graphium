@@ -1,0 +1,27 @@
+# @package _global_
+# 4ds v2 base training config (DTI v3 + MolFormer literature_v2 + BBBC047 + ToyMix).
+# Identical to the 4ds v1 training schedule; only naming differs.
+
+predictor:
+  random_seed: ${constants.seed}
+  optim_kwargs:
+    lr: 3.e-4
+  torch_scheduler_kwargs:
+    module_type: WarmUpLinearLR
+    max_num_epochs: ${constants.max_epochs}
+    warmup_epochs: 5
+    verbose: False
+  scheduler_kwargs: null
+  target_nan_mask: null
+  multitask_handling: flatten
+
+trainer:
+  seed: ${constants.seed}
+  model_checkpoint:
+    filename: ${constants.name}
+    save_last: True
+  trainer:
+    precision: 16
+    max_epochs: ${constants.max_epochs}
+    min_epochs: 1
+    check_val_every_n_epoch: 10

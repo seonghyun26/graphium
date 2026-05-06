@@ -1,0 +1,42 @@
+# @package _global_
+# PairMixer 12M base config for the 4ds v2 mixture
+# (DTI ESM-C v3, LiterMolFormer v2 (768-d), BBBC047, ToyMix).
+#
+# Per-step batch stays small because three heavy regression heads run in
+# parallel — but lpm24 dropped from 1536-d (OpenAI) to 768-d (MolFormer) so
+# the head out-dim total is reduced (~2592 vs ~3360 before). Same eff-bs
+# settings still work.
+
+constants:
+  name: toymix_dti_esmc_v3_litmolformer_v2_bbbc047_pairmixer_12M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/toymix_dti_esmc_v3_litmolformer_v2_bbbc047/
+
+datamodule:
+  args:
+    batch_size_training: 8
+    batch_size_inference: 8
+    num_workers: 4
+    persistent_workers: true
+    featurization_n_jobs: 8
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_dti_esmc_v3_litmolformer_v2_bbbc047/pairmixer_12M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 10
+    save_top_k: -1
+  trainer:
+    precision: bf16-mixed
+    accumulate_grad_batches: 6
+    gradient_clip_val: 1.0
+    gradient_clip_algorithm: norm
+
+predictor:
+  optim_kwargs:
+    lr: 1.e-4
+    weight_decay: 0.01
+    optim_impl: AdamW

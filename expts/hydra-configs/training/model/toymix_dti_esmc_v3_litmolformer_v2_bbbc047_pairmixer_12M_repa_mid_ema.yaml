@@ -1,0 +1,33 @@
+# @package _global_
+# 4ds v2 PairMixer 12M: mid-layer REPA + EMA (decay 0.999) + AdamW(wd=0.01)
+# + grad-clip 1.0 (norm) — the runnable variant for an end-to-end pretrain.
+#
+# Differences vs the 4ds v1 sister `repa_mid_ema`:
+#   - DTI: ESM-C v3 (BindingDB IC50+Ki+Patent, 100k pairs)
+#   - lpm24 (slot name preserved): MolFormer-XL 768-d (was OpenAI 1536-d)
+#
+# Drops the Boltz-REPA pair-alignment term from `repa_mid_boltz_ema` so this
+# isolates "mid-REPA + EMA + WD + GC" with the v2 modality choices.
+#
+# Compose with:
+#   tasks=toymix_dti_esmc_v3_litmolformer_v2_bbbc047
+#   training=toymix_dti_esmc_v3_litmolformer_v2_bbbc047
+#   architecture=toymix
+#   model=pairmixer_12M
+#   training/model=toymix_dti_esmc_v3_litmolformer_v2_bbbc047_pairmixer_12M_repa_mid_ema
+
+defaults:
+  - toymix_dti_esmc_v3_litmolformer_v2_bbbc047_pairmixer_12M_repa_mid
+
+constants:
+  name: toymix_dti_esmc_v3_litmolformer_v2_bbbc047_pairmixer_12M_repa_mid_ema
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_dti_esmc_v3_litmolformer_v2_bbbc047/pairmixer_12M_repa_mid_ema/${now:%Y-%m-%d_%H-%M-%S}/
+  ema:
+    enabled: true
+    decay: 0.999
+    use_for_validation: true
+    use_for_test: true
+    save_ema_checkpoint: true

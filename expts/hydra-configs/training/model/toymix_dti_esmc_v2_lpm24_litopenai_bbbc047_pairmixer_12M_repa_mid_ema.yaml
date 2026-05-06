@@ -1,0 +1,39 @@
+# @package _global_
+# Sister of `..._repa_mid_boltz_ema` — same recipe, drops the final-layer
+# Boltz pair alignment so the only auxiliary loss is the mid-layer REPA
+# cosine alignment for the three dense modalities (DTI ESM-C, LPM-24,
+# BBBC047). EMA + AdamW(wd=0.01) + grad clip 1.0 (norm) preserved.
+#
+# Use this to isolate "mid-REPA + EMA + WD + GC" without the Boltz pair
+# alignment, on GPU 4-7 in DDP-4, while the boltz_ema sister runs on 0-3.
+#
+# Compose with:
+#   tasks=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047
+#   training=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047
+#   architecture=toymix
+#   model=pairmixer_12M
+#   training/model=toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_repa_mid_ema
+
+defaults:
+  - toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_repa_mid
+
+constants:
+  name: toymix_dti_esmc_v2_lpm24_litopenai_bbbc047_pairmixer_12M_repa_mid_ema
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/toymix_dti_esmc_v2_lpm24_litopenai_bbbc047/pairmixer_12M_repa_mid_ema/${now:%Y-%m-%d_%H-%M-%S}/
+  trainer:
+    gradient_clip_val: 1.0
+    gradient_clip_algorithm: norm
+  ema:
+    enabled: true
+    decay: 0.999
+    use_for_validation: true
+    use_for_test: true
+    save_ema_checkpoint: true
+
+predictor:
+  optim_kwargs:
+    weight_decay: 0.01
+    optim_impl: AdamW

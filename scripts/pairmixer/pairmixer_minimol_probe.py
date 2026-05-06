@@ -203,11 +203,19 @@ def cantor_pairing(a: int, b: int) -> int:
 
 def model_factory(hidden_dim: int, depth: int, combine: bool, task: str, lr: float,
                   *, input_dim: int, epochs: int, warmup: int = 5,
-                  weight_decay: float = 1e-4):
+                  weight_decay: float = 1e-4, reg_loss: str = "mse"):
     """Builds (TaskHead, Adam, LambdaLR cosine-with-warmup, loss_fn)."""
     model = TaskHead(hidden_dim=hidden_dim, input_dim=input_dim, depth=depth, combine=combine)
     optimiser = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-    loss_fn = nn.BCELoss() if task == "classification" else nn.MSELoss()
+    if task == "classification":
+        loss_fn = nn.BCELoss()
+    else:
+        if reg_loss == "mae":
+            loss_fn = nn.L1Loss()
+        elif reg_loss == "mse":
+            loss_fn = nn.MSELoss()
+        else:
+            raise ValueError(f"reg_loss must be 'mse' or 'mae', got {reg_loss!r}")
 
     def lr_fn(epoch: int) -> float:
         if epoch < warmup:
@@ -326,7 +334,7 @@ def _train_one_fold(
         torch.cuda.manual_seed_all(seed)
     model, optimiser, scheduler, loss_fn = model_factory(
         hp["hidden_dim"], hp["depth"], hp["combine"], task_type, hp["lr"],
-        input_dim=input_dim, epochs=args.epochs,
+        input_dim=input_dim, epochs=args.epochs, reg_loss=args.reg_loss,
     )
     model = model.to(device)
     best_state, best_val = None, float("inf")
@@ -379,7 +387,10 @@ def run_one_task_sweep(
     name = benchmark["name"]
     is_clf = benchmark["test"]["Y"].nunique() == 2
     task_type = "classification" if is_clf else "regression"
-    loss_fn = nn.BCELoss() if task_type == "classification" else nn.MSELoss()
+    if task_type == "classification":
+        loss_fn = nn.BCELoss()
+    else:
+        loss_fn = nn.L1Loss() if args.reg_loss == "mae" else nn.MSELoss()
     sweep_reps = max(1, int(args.sweep_reps))
 
     # Test loader stays fixed across HPs.
@@ -522,7 +533,7 @@ def run_one_task(
                 torch.cuda.manual_seed_all(seed)
             model, optimiser, scheduler, loss_fn = model_factory(
                 hp["hidden_dim"], hp["depth"], hp["combine"], task_type, hp["lr"],
-                input_dim=input_dim, epochs=args.epochs,
+                input_dim=input_dim, epochs=args.epochs, reg_loss=args.reg_loss,
             )
             model = model.to(device)
 
@@ -578,6 +589,7 @@ def run_one_task(
         "n_reps":         args.reps,
         "n_ensemble":     args.ensemble_size,
         "n_epochs":       args.epochs,
+        "reg_loss":       args.reg_loss,
         "hp_source":      hp_source,
         "hidden_dim":     hp["hidden_dim"],
         "depth":          hp["depth"],
@@ -762,6 +774,8 @@ def main() -> None:
                    help="Inner fold-models per ensemble (MiniMol default: 5)")
     p.add_argument("--epochs", type=int, default=25,
                    help="Head training epochs (MiniMol default: 25)")
+    p.add_argument("--reg-loss", choices=("mse", "mae"), default="mse",
+                   help="Regression loss for probe training (default: mse, matching MiniMol)")
     p.add_argument("--batch-size", type=int, default=32, help="Head training batch size")
     p.add_argument("--embed-batch-size", type=int, default=32,
                    help="GNN forward batch size for fingerprint extraction")
@@ -849,6 +863,7 @@ def main() -> None:
         "pretrain_label": args.pretrain_label,
         "n_folds":        args.ensemble_size,
         "n_epochs":       args.epochs,
+        "reg_loss":       args.reg_loss,
         "tasks":          {},
     }
     sweep_out_path = (

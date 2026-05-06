@@ -1,0 +1,228 @@
+# @package _global_
+# 4ds v2: ToyMix (QM9 + Tox21 + ZINC) + DTI ESM-C v3 (BindingDB IC50+Ki+Patent,
+# 100k pairs, ≤100 atoms, ≤1500 aa, 1152-d ESM-C 600M) + LPM-24 -> MolFormer-XL
+# (768-d, 100%-coverage chemistry distillate, ≤100 atoms, ADMET-test-filtered,
+# subtracted overlap with ToyMix/DTI_v3/JUMP-CP/BBBC047) + BBBC047 (672-d).
+#
+# Same task slot names as v1 (dti / lpm24 / bbbc047 / qm9 / tox21 / zinc) so
+# REPA-mid and downstream code that hardcodes the slot names keeps working.
+
+datamodule:
+  args:
+    task_specific_args:
+      dti:
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/dti_esmc_100k_v3.csv
+        smiles_col: "SMILES_nometa"
+        label_cols: feature_*
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
+      lpm24:
+        df_path: /home/shpark/prj-molrepr/graphium/data/dti-processed/litmolformer_v2.parquet
+        smiles_col: "SMILES_nometa"
+        label_cols: feature_*
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
+      bbbc047:
+        df_path: /home/shpark/prj-molrepr/data/bbbc047/bbbc047_smiles_embeddings_max100_admetfilt.csv
+        smiles_col: "SMILES"
+        label_cols: feature_*
+        split_val: 0.1
+        split_test: 0.1
+        seed: 0
+        task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
+      qm9:
+        df: null
+        df_path: ${constants.data_dir}/qm9.csv
+        smiles_col: "smiles"
+        label_cols: ["A", "B", "C", "mu", "alpha", "homo", "lumo", "gap", "r2", "zpve", "u0", "u298", "h298", "g298", "cv", "u0_atom", "u298_atom", "h298_atom", "g298_atom"]
+        splits_path: ${constants.data_dir}/qm9_random_splits.pt
+        seed: ${constants.seed}
+        task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
+      tox21:
+        df: null
+        df_path: ${constants.data_dir}/Tox21-7k-12-labels.csv
+        smiles_col: "smiles"
+        label_cols: ["NR-AR", "NR-AR-LBD", "NR-AhR", "NR-Aromatase", "NR-ER", "NR-ER-LBD", "NR-PPAR-gamma", "SR-ARE", "SR-ATAD5", "SR-HSE", "SR-MMP", "SR-p53"]
+        splits_path: ${constants.data_dir}/Tox21_random_splits.pt
+        seed: ${constants.seed}
+        task_level: graph
+      zinc:
+        df: null
+        df_path: ${constants.data_dir}/ZINC12k.csv
+        smiles_col: "smiles"
+        label_cols: ["SA", "logp", "score"]
+        splits_path: ${constants.data_dir}/ZINC12k_random_splits.pt
+        seed: ${constants.seed}
+        task_level: graph
+        label_normalization:
+          normalize_val_test: True
+          method: "normal"
+
+architecture:
+  task_heads:
+    dti:
+      task_level: graph
+      out_dim: 1152
+      hidden_dims: 128
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
+    lpm24:
+      task_level: graph
+      out_dim: 768                 # MolFormer-XL hidden dim (replaces 1536-d OpenAI text)
+      hidden_dims: 128
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
+    bbbc047:
+      task_level: graph
+      out_dim: 672
+      hidden_dims: 128
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
+    qm9:
+      task_level: graph
+      out_dim: 19
+      hidden_dims: 128
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
+    tox21:
+      task_level: graph
+      out_dim: 12
+      hidden_dims: 64
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
+    zinc:
+      task_level: graph
+      out_dim: 3
+      hidden_dims: 32
+      depth: 2
+      activation: relu
+      last_activation: none
+      dropout: ${architecture.pre_nn.dropout}
+      normalization: ${architecture.pre_nn.normalization}
+      last_normalization: "none"
+      residual_type: none
+
+predictor:
+  metrics_on_progress_bar:
+    dti: ['mae']
+    lpm24: ['mae']
+    bbbc047: ['mae']
+    qm9: ["mae"]
+    tox21: ["auroc"]
+    zinc: ["mae"]
+  metrics_on_training_set:
+    dti: ['mae']
+    lpm24: ['mae']
+    bbbc047: ['mae']
+    qm9: []
+    tox21: []
+    zinc: []
+  loss_fun:
+    dti: mae_ipu
+    lpm24: mae_ipu
+    bbbc047: mae_ipu
+    qm9: mae_ipu
+    tox21: bce_logits_ipu
+    zinc: mae_ipu
+
+metrics:
+  dti:
+  - name: mae
+    metric: mae_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu
+  lpm24:
+  - name: mae
+    metric: mae_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu
+  bbbc047:
+  - name: mae
+    metric: mae_ipu
+  - name: pearsonr
+    metric: pearsonr_ipu
+  qm9: &qm9_metrics
+    - name: mae
+      metric: mae_ipu
+      target_nan_mask: null
+      multitask_handling: flatten
+      threshold_kwargs: null
+    - name: pearsonr
+      metric: pearsonr_ipu
+      threshold_kwargs: null
+      target_nan_mask: null
+      multitask_handling: mean-per-label
+    - name: r2_score
+      metric: r2_score_ipu
+      target_nan_mask: null
+      multitask_handling: mean-per-label
+      threshold_kwargs: null
+  tox21:
+    - name: auroc
+      metric: auroc_ipu
+      task: binary
+      multitask_handling: mean-per-label
+      threshold_kwargs: null
+    - name: avpr
+      metric: average_precision_ipu
+      task: binary
+      multitask_handling: mean-per-label
+      threshold_kwargs: null
+    - name: f1 > 0.5
+      metric: f1
+      multitask_handling: mean-per-label
+      target_to_int: True
+      num_classes: 2
+      average: micro
+      threshold_kwargs: &threshold_05
+        operator: greater
+        threshold: 0.5
+        th_on_preds: True
+        th_on_target: True
+    - name: precision > 0.5
+      metric: precision
+      multitask_handling: mean-per-label
+      average: micro
+      threshold_kwargs: *threshold_05
+  zinc: *qm9_metrics

@@ -1,0 +1,60 @@
+# @package _global_
+# Mid-layer REPA variant of pretender_v3 PairMixer 12M.
+#
+# Same architecture-split logic as the unfiltered v3 repa_mid:
+#   * ToyMix supervised tasks (qm9 / tox21 / zinc) train at the END.
+#   * Dense modality embeddings (DTI ESM-C v3, MolFormer v2 literature, BBBC047
+#     Cell Painting) align at MIDDLE layer 4 of 8 via REPA cosine through a
+#     small per-task projector consuming the mean-pooled mid-layer pair tensor.
+#
+# Compose with:
+#   tasks=pretender_v3
+#   training=pretender_v3
+#   architecture=toymix
+#   model=pairmixer_12M
+#   training/model=pretender_v3_pairmixer_12M_repa_mid
+
+defaults:
+  - pretender_v3_pairmixer_12M
+
+constants:
+  name: pretender_v3_pairmixer_12M_repa_mid
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/pretender_v3/pairmixer_12M_repa_mid/${now:%Y-%m-%d_%H-%M-%S}/
+
+predictor:
+  # Neutralize the 3 dense-aux losses at the FINAL layer; the gradient
+  # signal comes from the mid-layer REPA cosine alignment instead.
+  loss_fun:
+    dti:     zero_loss_ipu
+    lpm24:   zero_loss_ipu
+    bbbc047: zero_loss_ipu
+    qm9:   mae_ipu
+    tox21: bce_logits_ipu
+    zinc:  mae_ipu
+
+  # Mid-layer REPA alignment.
+  #   capture_layer = 4   →  middle of 8-layer PairMixer (0-indexed)
+  #   d_pair        = 224 →  PairMixer 12M D_z
+  #   per task: hidden = 512; weight = 0.5 (REPA paper default)
+  repa_intermediate_kwargs:
+    capture_layer: 4
+    d_pair: 224
+    tasks:
+      dti:
+        d_target: 1152      # ESM-C 600M dim
+        hidden: 512
+        weight: 0.5
+        label_key: graph_dti
+      lpm24:
+        d_target: 768       # MolFormer-XL hidden dim
+        hidden: 512
+        weight: 0.5
+        label_key: graph_lpm24
+      bbbc047:
+        d_target: 672       # U2OS Cell Painting dim
+        hidden: 512
+        weight: 0.5
+        label_key: graph_bbbc047
