@@ -47,6 +47,7 @@ graphium/data/make_data_splits/*.parquet*
 *.csv.gz
 *.pt
 data/graphium/
+data/db/
 
 # Others
 expts_untracked/

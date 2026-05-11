@@ -31,17 +31,17 @@ SOURCES = [
 ]
 
 
-def canon(s):
+def canon(s, isomeric=True):
     if not isinstance(s, str):
         return None
     m = Chem.MolFromSmiles(s)
-    return Chem.MolToSmiles(m, canonical=True) if m is not None else None
+    return Chem.MolToSmiles(m, canonical=True, isomericSmiles=isomeric) if m is not None else None
 
 
-def canon_set(smis, n_jobs=8, desc="canon"):
+def canon_set(smis, n_jobs=8, desc="canon", isomeric=True):
     uniq = list({s for s in smis if isinstance(s, str)})
     out = Parallel(n_jobs=n_jobs, backend="loky", batch_size=512)(
-        delayed(canon)(s) for s in tqdm(uniq, desc=desc, unit="mol")
+        delayed(canon)(s, isomeric) for s in tqdm(uniq, desc=desc, unit="mol")
     )
     return {c for c in out if c is not None}
 
@@ -74,11 +74,24 @@ def load_admet_test():
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--no-strip-stereo", dest="strip_stereo", action="store_false",
+                    help="Use stereo-preserving canonicalization only (old behaviour).")
+    ap.set_defaults(strip_stereo=True)
+    args = ap.parse_args()
+
+    stereo_label = "stereo-stripped" if args.strip_stereo else "stereo-preserving"
     print("=" * 72)
-    print("Loading ADMET TDC test SMILES")
+    print(f"Loading ADMET TDC test SMILES  [{stereo_label} comparison]")
     print("=" * 72)
     admet = load_admet_test()
-    print(f"  unique canonical ADMET-test SMILES: {len(admet):,}\n")
+    admet_nostreo = canon_set(
+        list(admet), desc="admet_test_nostreo", isomeric=False
+    ) if args.strip_stereo else set()
+    print(f"  unique canonical ADMET-test SMILES: {len(admet):,}")
+    if args.strip_stereo:
+        print(f"  unique stereo-stripped:             {len(admet_nostreo):,}\n")
 
     for name, path, col in SOURCES:
         if not path.exists():
@@ -89,12 +102,26 @@ def main():
         print("=" * 72)
         raw = load_col(path, col)
         s = canon_set(raw, desc=name)
-        leak = s & admet
-        print(f"  total rows in source:       {len(raw):,}")
-        print(f"  unique canonical SMILES:    {len(s):,}")
-        print(f"  ADMET-test ∩ source SMILES: {len(leak):,}")
-        if leak:
-            print(f"  examples: {list(sorted(leak))[:5]}")
+        leak_stereo = s & admet
+        if args.strip_stereo:
+            s_nostreo = canon_set(raw, desc=f"{name}_nostreo", isomeric=False)
+            leak_nostreo = s_nostreo & admet_nostreo
+            leak_extra = leak_nostreo - {canon(c, isomeric=False) for c in leak_stereo}
+            leak_total = len(leak_stereo) + len(leak_extra)
+        else:
+            leak_nostreo = set()
+            leak_extra = set()
+            leak_total = len(leak_stereo)
+        print(f"  total rows in source:         {len(raw):,}")
+        print(f"  unique canonical SMILES:      {len(s):,}")
+        print(f"  ADMET-test ∩ source (stereo): {len(leak_stereo):,}")
+        if args.strip_stereo:
+            print(f"  ADMET-test ∩ source (nostreo, new): {len(leak_extra):,}")
+            print(f"  total leaks:                  {leak_total:,}")
+        if leak_stereo:
+            print(f"  stereo examples: {list(sorted(leak_stereo))[:3]}")
+        if leak_extra:
+            print(f"  nostreo examples: {list(sorted(leak_extra))[:3]}")
         print()
 
 

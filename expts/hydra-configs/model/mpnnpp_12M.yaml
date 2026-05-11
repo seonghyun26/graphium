@@ -1,0 +1,67 @@
+# @package _global_
+# MPNN++ ~10M configuration — designed to complement PairMixer 12M in an
+# ensemble (MolGPS-style fingerprint concatenation).
+#
+# D_node=320, D_edge=128, depth=8, expansion=2 → 11.34M backbone (12.29M with admet heads)
+#   pre_nn:          0.15M
+#   pre_nn_edges:    0.02M
+#   gnn backbone:   11.17M  (8 × MPNNPlusPyg, bidirectional, expansion=2) — matches PairMixer 12M depth
+#   graph_output:    ~0.5M  (sum → 320 → 256 → 512, within task_heads)
+#
+# Design choices:
+#   1. Same expanded featurization as pairmixer_12M — identical atom/bond features
+#      so both models see the same input distribution.
+#   2. graph_output out_dim=512 — matches pairmixer_12M fingerprint dim for
+#      easy concatenation into a 1024-d ensemble fingerprint.
+#   3. virtual_node=logsum — consistent with pairmixer_12M readout strategy.
+#   4. Complementary inductive bias: MPNN++ captures local message-passing with
+#      explicit edge updates; PairMixer captures pair-wise attention via pair track.
+
+architecture:
+  pre_nn:
+    out_dim: 320
+    hidden_dims: 320
+
+  pre_nn_edges:
+    out_dim: 128
+    hidden_dims: 128
+    depth: 2
+    activation: relu
+    last_activation: none
+    dropout: 0.02
+    normalization: layer_norm
+    last_normalization: layer_norm
+    residual_type: none
+
+  gnn:
+    in_dim: 320
+    out_dim: 320
+    hidden_dims: 320
+    in_dim_edges: 128           # Must match pre_nn_edges.out_dim
+    hidden_dims_edges: 128
+    depth: 8
+    virtual_node: logsum
+    layer_type: 'pyg:mpnnplus'
+    layer_kwargs:
+      mlp_expansion_ratio: 2    # 4 (default) blows up params due to wide hidden MLPs
+      use_globals: false        # global state per-layer would double params (virtual_node covers readout)
+
+  graph_output_nn:
+    graph:
+      pooling: [sum]
+      hidden_dims: 256
+      out_dim: 512
+      depth: 2
+
+# ── Expanded featurization (identical to pairmixer_12M) ──────────────────────
+datamodule:
+  args:
+    featurization:
+      atom_property_list_onehot: [atomic-number, group, period, total-valence, hybridization, chirality]
+      atom_property_list_float: [degree, formal-charge, radical-electron, aromatic, in-ring, mass, electronegativity, vdw-radius, num-ring]
+      edge_property_list: [bond-type-onehot, stereo, in-ring, conjugated]
+
+# ── Optimiser ─────────────────────────────────────────────────────────────────
+predictor:
+  optim_kwargs:
+    lr: 2.e-4

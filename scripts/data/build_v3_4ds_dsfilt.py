@@ -71,23 +71,23 @@ SOURCES = [
 
 # ---------- canonicalization --------------------------------------------------
 
-def canon(s):
+def canon(s, isomeric=True):
     if not isinstance(s, str):
         return None
     m = Chem.MolFromSmiles(s)
-    return Chem.MolToSmiles(m, canonical=True) if m is not None else None
+    return Chem.MolToSmiles(m, canonical=True, isomericSmiles=isomeric) if m is not None else None
 
 
-def canon_list(smis, n_jobs=8, desc="canon"):
+def canon_list(smis, n_jobs=8, desc="canon", isomeric=True):
     """Return list of canonical SMILES (None for invalid), preserving order."""
     return Parallel(n_jobs=n_jobs, backend="loky", batch_size=1024)(
-        delayed(canon)(s) for s in tqdm(smis, desc=desc, unit="mol")
+        delayed(canon)(s, isomeric) for s in tqdm(smis, desc=desc, unit="mol")
     )
 
 
-def canon_set(smis, n_jobs=8, desc="canon"):
+def canon_set(smis, n_jobs=8, desc="canon", isomeric=True):
     uniq = list({s for s in smis if isinstance(s, str)})
-    out = canon_list(uniq, n_jobs=n_jobs, desc=desc)
+    out = canon_list(uniq, n_jobs=n_jobs, desc=desc, isomeric=isomeric)
     return {c for c in out if c is not None}
 
 
@@ -192,6 +192,9 @@ def main():
     ap.add_argument("--write", action="store_true",
                     help="Phase 2: write filtered output files. Without this flag, only the leakage table is printed.")
     ap.add_argument("--n-jobs", type=int, default=8)
+    ap.add_argument("--no-strip-stereo", dest="strip_stereo", action="store_false",
+                    help="Use stereo-preserving canonicalization only (old behaviour).")
+    ap.set_defaults(strip_stereo=True)
     args = ap.parse_args()
 
     # ---------------- downstream test sets ---------------------------------
@@ -222,14 +225,21 @@ def main():
     }
     union = set().union(*downstream.values())
     print(f"\nUNION of all downstream test SMILES: {len(union):,}")
+    if args.strip_stereo:
+        union_nostreo = canon_set(list(union), n_jobs=args.n_jobs,
+                                  desc="union_nostreo", isomeric=False)
+        print(f"UNION stereo-stripped (nostreo):     {len(union_nostreo):,}")
+    else:
+        union_nostreo = set()
 
     # ---------------- per-source leakage report ----------------------------
     print("\n" + "=" * 78)
     print("Leakage report (per pretrain source x per downstream)")
     print("=" * 78)
 
-    cached_canon = {}    # name -> list of canonical SMILES (one per source row, None for invalid)
-    cached_dfs = {}      # name -> DataFrame of source
+    cached_canon = {}         # name -> list of canonical SMILES (stereo), None for invalid
+    cached_canon_nostreo = {} # name -> list of canonical SMILES (nostreo), None for invalid
+    cached_dfs = {}           # name -> DataFrame of source
 
     for name, path, col, kind, _splits in SOURCES:
         if not path.exists():
@@ -247,13 +257,23 @@ def main():
         unique = {c for c in cano if c is not None}
         print(f"  rows={n_total:,}  unique_canon={len(unique):,}  invalid={n_invalid:,}")
 
-        leak_total = unique & union
+        leak_stereo = unique & union
         for ds_name, ds in downstream.items():
             inter = unique & ds
             print(f"    vs {ds_name:11s}  {fmt_pct(len(inter), len(unique))}")
         n_leak_rows = sum(1 for c in cano if c is not None and c in union)
-        print(f"    UNION leak rows: {fmt_pct(n_leak_rows, n_total)}  "
-              f"(unique leak SMILES: {len(leak_total):,})")
+        print(f"    UNION leak rows (stereo): {fmt_pct(n_leak_rows, n_total)}  "
+              f"(unique: {len(leak_stereo):,})")
+
+        if args.strip_stereo:
+            cano_ns = canon_list(smis, n_jobs=args.n_jobs, desc=f"{name}_nostreo", isomeric=False)
+            cached_canon_nostreo[name] = cano_ns
+            unique_ns = {c for c in cano_ns if c is not None}
+            leak_ns = unique_ns & union_nostreo
+            n_leak_ns_rows = sum(1 for c in cano_ns if c is not None and c in union_nostreo)
+            extra = len(leak_ns) - len({canon(c, isomeric=False) for c in leak_stereo if c is not None})
+            print(f"    UNION leak rows (nostreo): {fmt_pct(n_leak_ns_rows, n_total)}  "
+                  f"(unique: {len(leak_ns):,}, extra vs stereo: {extra:+,})")
 
     if not args.write:
         print("\n" + "=" * 78)
@@ -283,8 +303,16 @@ def main():
             continue
         df = cached_dfs[name]
         cano = cached_canon[name]
-        # keep rows whose canon is valid AND not in any downstream test set
-        keep_mask = np.array([(c is not None) and (c not in union) for c in cano], dtype=bool)
+        cano_ns = cached_canon_nostreo.get(name) if args.strip_stereo else None
+        # keep rows whose canon is valid AND not in any downstream test set (stereo or nostreo)
+        if cano_ns is not None:
+            keep_mask = np.array(
+                [(c is not None) and (c not in union) and (cn not in union_nostreo)
+                 for c, cn in zip(cano, cano_ns)],
+                dtype=bool,
+            )
+        else:
+            keep_mask = np.array([(c is not None) and (c not in union) for c in cano], dtype=bool)
         df_filt = df.loc[keep_mask].reset_index(drop=True)
         kept_old = np.where(keep_mask)[0]
 

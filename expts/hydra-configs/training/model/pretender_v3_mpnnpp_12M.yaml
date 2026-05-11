@@ -1,0 +1,47 @@
+# @package _global_
+# MPNN++ 12M config for pretender_v3 (downstream-leakage-filtered 4ds v3).
+#
+# DDP-4 effective batch: bs=16 × accum=3 × 4 GPUs = 192 global steps/update.
+# Add these CLI overrides at launch time:
+#   +trainer.trainer.devices=4
+#   +trainer.trainer.strategy=ddp_find_unused_parameters_true
+
+constants:
+  name: pretender_v3_mpnnpp_12M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: /home/shpark/prj-molrepr/datacache/pretender_v3_mpnnpp/
+
+datamodule:
+  args:
+    batch_size_training: 16
+    batch_size_inference: 16
+    num_workers: 8
+    persistent_workers: true
+    featurization_n_jobs: 8
+
+trainer:
+  model_checkpoint:
+    dirpath: /home/shpark/prj-molrepr/graphium/models_checkpoints/pretender_v3/mpnnpp_12M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 10
+    save_top_k: -1
+  trainer:
+    precision: bf16-mixed
+    accumulate_grad_batches: 3      # effective batch per GPU = 48 (bs 16 × 3); global = ×4 GPUs = 192
+    gradient_clip_val: 1.0
+    gradient_clip_algorithm: norm
+  ema:
+    enabled: true
+    decay: 0.999
+    use_for_validation: true
+    use_for_test: true
+    save_ema_checkpoint: true
+
+predictor:
+  optim_kwargs:
+    lr: 1.e-4
+    weight_decay: 0.01
+    optim_impl: AdamW

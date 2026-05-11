@@ -1,0 +1,26 @@
+# @package _global_
+
+constants:
+  name: toymix_mpnnpp_12M
+  seed: 42
+  max_epochs: 100
+  data_dir: ./data/graphium/neurips2023/small-dataset
+  raise_train_error: true
+  datacache_path: ../datacache/neurips2023-small-feat2/
+
+datamodule:
+  args:
+    batch_size_training: 32
+    batch_size_inference: 32
+    num_workers: 0
+    persistent_workers: false
+    featurization_n_jobs: 0
+
+trainer:
+  model_checkpoint:
+    dirpath: models_checkpoints/small-dataset/mpnnpp_12M/${now:%Y-%m-%d_%H-%M-%S}/
+    filename: "${constants.name}_epoch{epoch:03d}"
+    every_n_epochs: 10
+    save_top_k: -1
+  trainer:
+    precision: bf16-mixed
