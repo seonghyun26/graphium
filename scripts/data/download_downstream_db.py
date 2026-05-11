@@ -1,9 +1,21 @@
 #!/usr/bin/env python
-"""Download downstream.db from the HF dataset repo.
+"""Download data/db/ (downstream.db + embeddings) from the HF dataset repo.
+
+Downloads the entire repo into data/db/, preserving the
+modality/dataset/model_vxx/ structure.
 
 Usage (from graphium/):
+    # Download everything
     python scripts/data/download_downstream_db.py
-    python scripts/data/download_downstream_db.py --dest /custom/path/downstream.db
+
+    # Download only the SQLite DB
+    python scripts/data/download_downstream_db.py --include "downstream.db"
+
+    # Download only cell embeddings
+    python scripts/data/download_downstream_db.py --include "cell/**"
+
+    # Download only protein esmc_v3
+    python scripts/data/download_downstream_db.py --include "protein/dti_tdc/esmc_v3/**"
 
 The repo is private; requires a HF token with read access:
     huggingface-cli login        # interactive
@@ -15,43 +27,39 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-REPO_ID  = "hyunnnnnnnn/mmf-db"
-DB_PATH  = Path(__file__).parent.parent.parent / "data" / "db" / "downstream.db"
+REPO_ID = "hyunnnnnnnn/mmf-db"
+DB_DIR  = Path(__file__).parent.parent.parent / "data" / "db"
 
 
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument("--repo", default=REPO_ID, help=f"HF dataset repo ID (default: {REPO_ID})")
-    p.add_argument("--dest", type=Path, default=DB_PATH, help="Destination path for downstream.db")
+    p.add_argument("--repo",    default=REPO_ID, help=f"HF dataset repo ID (default: {REPO_ID})")
+    p.add_argument("--dest",    type=Path, default=DB_DIR, help="Local destination directory (default: data/db/)")
+    p.add_argument("--include", default=None, help="Glob pattern to restrict download (e.g. 'cell/**')")
     args = p.parse_args()
 
     try:
-        from huggingface_hub import hf_hub_download
+        from huggingface_hub import snapshot_download
     except ImportError:
         raise SystemExit("huggingface_hub not installed. Run: pip install huggingface_hub")
 
-    args.dest.parent.mkdir(parents=True, exist_ok=True)
+    args.dest.mkdir(parents=True, exist_ok=True)
 
-    print(f"Repo: {args.repo}")
-    print(f"Dest: {args.dest}")
+    print(f"Repo:   {args.repo}")
+    print(f"Dest:   {args.dest}")
+    print(f"Filter: {args.include or '(all files)'}")
     print()
 
-    path = hf_hub_download(
+    snapshot_download(
         repo_id=args.repo,
         repo_type="dataset",
-        filename="downstream.db",
-        local_dir=str(args.dest.parent),
+        local_dir=str(args.dest),
+        allow_patterns=args.include,
     )
 
-    # hf_hub_download may put it in a cache subdir; rename to exact dest if needed
-    downloaded = Path(path)
-    if downloaded.resolve() != args.dest.resolve():
-        downloaded.rename(args.dest)
-
-    size_mb = args.dest.stat().st_size / 1e6
-    print(f"Done: {args.dest}  ({size_mb:.1f} MB)")
+    print(f"\nDone: {args.dest}")
 
 
 if __name__ == "__main__":
