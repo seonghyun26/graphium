@@ -4,7 +4,7 @@
 Usage (from graphium/):
     python scripts/data/upload_downstream_db.py
     python scripts/data/upload_downstream_db.py --public
-    python scripts/data/upload_downstream_db.py --repo hyunnnnnnnn/graphium-downstream-db
+    python scripts/data/upload_downstream_db.py --repo hyunnnnnnnn/mmf-db
 
 Requires a HF token with write access:
     huggingface-cli login        # interactive
@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-REPO_ID  = "hyunnnnnnnn/graphium-downstream-db"
+REPO_ID  = "hyunnnnnnnn/mmf-db"
 DB_PATH  = Path(__file__).parent.parent.parent / "data" / "db" / "downstream.db"
 
 
