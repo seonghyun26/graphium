@@ -4,11 +4,12 @@
 Tables:
   tdc_admet        22 TDC ADMET tasks (scaffold split, train_val / test)
   adme_fang        6 Polaris ADME-Fang tasks (per-task scaffold split by seed)
-  gram_dti         4 DTIAM datasets × 3 split types × 5 folds (binary DTI)
+  gram_dti         4 DTI-TDC datasets, wide format: one row per pair,
+                   15 split columns (warm/drug_cold/target_cold × fold0-4)
   cell_bioactivity 30 cell bioactivity assays (Fredinh et al. 2024)
 
 Usage (from graphium/):
-  python data/build_downstream_db.py
+  python scripts/data/build_downstream_db.py
 """
 
 import os
@@ -23,14 +24,14 @@ from rdkit import Chem
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-GRAPHIUM    = Path(__file__).parent.parent
-DATA        = GRAPHIUM / "data"
-DATACACHE   = Path("/home/shpark/prj-molrepr/datacache")
-DOWNSTREAM  = Path("/home/shpark/prj-molrepr/data/downstream")
-DB          = DATA / "db" / "downstream.db"
+GRAPHIUM   = Path(__file__).parent.parent.parent   # graphium/
+DATA       = GRAPHIUM / "data"
+DATACACHE  = Path("/home/shpark/prj-molrepr/datacache")
+DOWNSTREAM = Path("/home/shpark/prj-molrepr/data/downstream")
+DB         = DATA / "db" / "downstream.db"
 
 # ---------------------------------------------------------------------------
-# SMILES canonicalization helpers
+# SMILES helpers
 # ---------------------------------------------------------------------------
 
 def _canon(smi: str) -> str:
@@ -39,10 +40,8 @@ def _canon(smi: str) -> str:
 
 
 def canon_series(s: pd.Series) -> pd.Series:
-    """Vectorised canonicalize: de-dup, map, fill in one pass."""
     unique = s.dropna().unique()
-    m = {x: _canon(x) for x in unique}
-    return s.map(m)
+    return s.map({x: _canon(x) for x in unique})
 
 
 def n_atoms_series(s: pd.Series) -> pd.Series:
@@ -56,18 +55,15 @@ def n_atoms_series(s: pd.Series) -> pd.Series:
 
 
 # ---------------------------------------------------------------------------
-# Split-file loader  (Polaris / cell-bioactivity style)
-# Each column contains row-indices into the source DataFrame, NaN-padded.
+# Split-file loader (Polaris / cell-bioactivity style)
 # ---------------------------------------------------------------------------
 
 def load_split_df(path: Path) -> dict[str, np.ndarray]:
-    """Return {split_name: int-array of row indices}."""
     df = pd.read_csv(path)
-    result = {}
-    for col in ["train", "val", "test"]:
-        if col in df.columns:
-            result[col] = df[col].dropna().astype(int).values
-    return result
+    return {
+        col: df[col].dropna().astype(int).values
+        for col in ["train", "val", "test"] if col in df.columns
+    }
 
 
 def make_split_col(n: int, idx_map: dict[str, np.ndarray]) -> np.ndarray:
@@ -109,12 +105,8 @@ def build_tdc_admet(conn: sqlite3.Connection) -> None:
             df["smiles_canon"] = canon_series(df["Drug"])
             for _, r in df.iterrows():
                 rows.append((
-                    r["smiles_canon"],
-                    str(r["Drug_ID"]),
-                    task,
-                    float(r["Y"]),
-                    _TDC_TYPE.get(task, "unknown"),
-                    split,
+                    r["smiles_canon"], str(r["Drug_ID"]), task,
+                    float(r["Y"]), _TDC_TYPE.get(task, "unknown"), split,
                 ))
 
     out = pd.DataFrame(rows, columns=["smiles", "drug_id", "task", "value", "task_type", "split"])
@@ -124,8 +116,7 @@ def build_tdc_admet(conn: sqlite3.Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Table 2 – ADME-Fang (Polaris biogen/adme-fang-v1)
-# One row per SMILES; each task gets a value column + split_seed0/seed42 column.
+# Table 2 – ADME-Fang
 # ---------------------------------------------------------------------------
 
 _FANG_TASKS = {
@@ -143,10 +134,7 @@ def build_adme_fang(conn: sqlite3.Connection) -> None:
     df = pd.read_parquet(root / "adme-fang-v1.parquet")
     df.index = range(len(df))
 
-    out = pd.DataFrame({
-        "smiles":    canon_series(df["SMILES"]),
-        "unique_id": df["UNIQUE_ID"],
-    })
+    out = pd.DataFrame({"smiles": canon_series(df["SMILES"]), "unique_id": df["UNIQUE_ID"]})
     for short, col in _FANG_TASKS.items():
         out[short] = df[col].values
 
@@ -155,11 +143,9 @@ def build_adme_fang(conn: sqlite3.Connection) -> None:
         for seed in [0, 42]:
             col = f"{task}_split_seed{seed}"
             fname = root / f"adme-fang-{task}-reg-v1_seed{seed}_split.csv"
+            out[col] = make_split_col(len(df), load_split_df(fname)) if fname.exists() else None
             if fname.exists():
-                out[col] = make_split_col(len(df), load_split_df(fname))
                 n_split_cols += 1
-            else:
-                out[col] = None
 
     out["n_atoms"] = n_atoms_series(out["smiles"])
     out.to_sql("adme_fang", conn, if_exists="replace", index=False)
@@ -167,13 +153,20 @@ def build_adme_fang(conn: sqlite3.Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Table 3 – GRAM-DTI (dti-classif-eval)
-# Exploded: one row per (smiles, target_id, dataset, split_type, fold).
+# Table 3 – GRAM-DTI  (wide format)
+# One row per (smiles, drug_id, target_id, dataset, label, n_atoms).
+# Split assignment stored as 15 columns: {split_type}_fold{i}
+# with values 'train' / 'val' / 'test' / None.
 # ---------------------------------------------------------------------------
 
 _DTI_DATASETS    = ["activation", "inhibition", "hetionet", "yamanishi_08"]
 _DTI_SPLIT_TYPES = ["warm", "drug_cold", "target_cold"]
 _DTI_N_FOLDS     = 5
+_DTI_SPLIT_COLS  = [
+    f"{st}_fold{f}"
+    for st in _DTI_SPLIT_TYPES
+    for f in range(_DTI_N_FOLDS)
+]
 
 
 def build_gram_dti(conn: sqlite3.Connection) -> None:
@@ -193,44 +186,40 @@ def build_gram_dti(conn: sqlite3.Connection) -> None:
         core["n_atoms"] = n_atoms_series(core["smiles"])
         n = len(core)
 
-        dataset_rows = 0
         for split_type in _DTI_SPLIT_TYPES:
             for fold in range(_DTI_N_FOLDS):
-                sf = dti_root / "splits" / f"{dataset}_{split_type}_fold{fold}.pt"
-                if not sf.exists():
-                    continue
+                col = f"{split_type}_fold{fold}"
+                sf  = dti_root / "splits" / f"{dataset}_{split_type}_fold{fold}.pt"
+                if sf.exists():
+                    split_dict = torch.load(sf)
+                    arr = np.full(n, None, dtype=object)
+                    for sname, idxs in split_dict.items():
+                        arr[np.asarray(idxs)] = sname
+                    core[col] = arr
+                else:
+                    core[col] = None
 
-                split_dict = torch.load(sf)
-                split_arr  = np.full(n, None, dtype=object)
-                for sname, idxs in split_dict.items():
-                    split_arr[np.asarray(idxs)] = sname
+        core.to_sql(
+            "gram_dti", conn,
+            if_exists="replace" if first else "append",
+            index=False, chunksize=100_000,
+        )
+        first = False
+        total_rows += n
+        print(f"    {dataset:<20}: {n:>9,} rows")
 
-                chunk = core.assign(split_type=split_type, fold=fold, split=split_arr)
-                chunk.to_sql(
-                    "gram_dti", conn,
-                    if_exists="replace" if first else "append",
-                    index=False, chunksize=100_000,
-                )
-                first = False
-                dataset_rows += len(chunk)
-
-        print(f"    {dataset:<20}: {dataset_rows:>9,} rows")
-        total_rows += dataset_rows
-
-    print(f"  gram_dti total:   {total_rows:>8,} rows")
+    print(f"  gram_dti total:   {total_rows:>8,} rows  ({len(_DTI_SPLIT_COLS)} split cols)")
 
 
 # ---------------------------------------------------------------------------
-# Table 4 – Cell bioactivity (Fredinh et al. 2024)
+# Table 4 – Cell bioactivity
 # ---------------------------------------------------------------------------
 
 def build_cell_bioactivity(conn: sqlite3.Connection) -> None:
     bio_root = DOWNSTREAM / "bioactivity"
     df       = pd.read_csv(bio_root / "cell_bioactivity.csv")
     df["smiles"] = canon_series(df["smiles"])
-
-    idx_map      = load_split_df(bio_root / "cell_bioactivity_split.csv")
-    df["split"]  = make_split_col(len(df), idx_map)
+    df["split"]  = make_split_col(len(df), load_split_df(bio_root / "cell_bioactivity_split.csv"))
 
     if "fold" in df.columns:
         df = df.rename(columns={"fold": "cv_fold"})
@@ -270,13 +259,12 @@ def main() -> None:
         CREATE INDEX IF NOT EXISTS idx_tdc_task    ON tdc_admet(task, split);
         CREATE INDEX IF NOT EXISTS idx_fang_smiles ON adme_fang(smiles);
         CREATE INDEX IF NOT EXISTS idx_dti_smiles  ON gram_dti(smiles);
-        CREATE INDEX IF NOT EXISTS idx_dti_lookup  ON gram_dti(dataset, split_type, fold, split);
+        CREATE INDEX IF NOT EXISTS idx_dti_dataset ON gram_dti(dataset);
         CREATE INDEX IF NOT EXISTS idx_bio_smiles  ON cell_bioactivity(smiles);
     """)
 
     conn.commit()
 
-    # Summary
     print("\n── Table summary ──────────────────────────────────")
     for table in ["tdc_admet", "adme_fang", "gram_dti", "cell_bioactivity"]:
         (cnt,) = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
